@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use ethers::utils::{Ganache, GanacheInstance};
 use futures::{self, FutureExt};
 use std::panic::AssertUnwindSafe;
+use once_cell::sync::Lazy;
 
 mod tests;
 mod types;
@@ -26,6 +27,22 @@ async fn main() -> Result<()> {
 
     println!("{} succeeded. {} failed", successes, failures);
     anyhow::ensure!(failures == 0, "Test failure.");
+    // Ok(())
+
+    // really we need a set of tests rather than a type for each "from" context
+    // for each context, we need a set of tests + an iterator over sets of tests
+    // that can be applied to context that can be generated from our context
+    for l in types::LISTS {
+        for x in **l {
+            println!("x: {}", x);
+        }
+    }
+    for x in types::FROM_BASE {
+        // println!("FROM_BASE");
+        for y in x.0 {
+            println!("FROM_BASE");
+        }
+    }
     Ok(())
 }
 

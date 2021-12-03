@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use ethers::{core::k256::ecdsa::SigningKey, prelude::*};
 use futures::future::Future;
 use futures_executor::block_on;
-use linkme::distributed_slice;
+use linkme::{distributed_slice, DistributedSlice};
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 
@@ -22,6 +22,79 @@ pub struct Test<T> {
 pub static TESTS_BASE: [Test<BaseContext>] = [..];
 #[distributed_slice]
 pub static TESTS_CTX1: [Test<Context1>] = [..];
+
+#[distributed_slice]
+pub static A: [usize] = [..];
+#[distributed_slice(A)]
+static a0: usize = 2;
+#[distributed_slice(A)]
+static a1: usize = 3;
+#[distributed_slice]
+pub static B: [usize] = [..];
+#[distributed_slice(B)]
+static b0: usize = 4;
+#[distributed_slice(B)]
+static b1: usize = 5;
+
+#[distributed_slice]
+pub static LISTS: [&'static DistributedSlice<[usize]>] = [..];
+#[distributed_slice(LISTS)]
+static l0: &'static DistributedSlice<[usize]> = &A;
+#[distributed_slice(LISTS)]
+static l1: &'static DistributedSlice<[usize]> = &B;
+
+// struct X<Ctx> {
+//     tests: [Tests<Ctx>],
+//     next_tests: [ [Tests<Z>] ] where Z: From<Ctx>
+// }
+
+// #[distributed_slice]
+// pub static TESTS_BASE: [Test<BaseContext>] = [..];
+#[distributed_slice]
+pub static TESTS_FROM_BASE: [Test<FromBaseContext>] = [..];
+#[distributed_slice]
+pub static FROM_BASE: [&'static Lazy< DS<FromBaseContext>>] = [..];
+// pub static FROM_BASE: [&'static DistributedSlice<[Test<FromBaseContext>]>] = [..];
+// pub static FROM_BASE: [[Tests<FromBaseContext>]];
+
+// #[distributed_slice(LISTS)]
+// static l1: &'static DistributedSlice<[usize]> = &B;
+// #[distributed_slice(TESTS_FROM_BASE)]
+// static _x0: &'static DistributedSlice<[usize]> = 
+
+
+pub enum FromBaseContext {
+    C1(Context1),
+}
+impl From<BaseContext> for FromBaseContext {
+    fn from(ctx: BaseContext) -> Self {
+        ctx.into()
+    }
+}
+impl From<Context1> for FromBaseContext {
+    fn from(ctx: Context1) -> Self {
+        Self::C1(ctx)
+    }
+}
+impl From<Test<Context1>> for Test<FromBaseContext> {
+    fn from(t: Test<Context1>) -> Self {
+        t.into()
+    }
+}
+pub struct DS<T>(pub DistributedSlice<[Test<T>]>);
+impl From<DistributedSlice<[Test<Context1>]>> for DS<FromBaseContext> {
+    fn from(d: DistributedSlice<[Test<Context1>]>) -> Self {
+        // d.map(|t| t.into())
+        d.into()
+    }
+}
+// #[distributed_slice]
+// pub static FROM_BASE_TESTS: [] = [..];
+// // pub static FROM_BASE: [&'static (dyn Send + Sync + From<BaseContext>)] = [..];
+// const _: () = {
+//     #[distributed_slice(FROM_BASE)]
+//     static __: FromBaseContext = FromBaseContext::Foo(Foo { });
+// };
 
 #[async_trait]
 pub trait Context {
@@ -70,7 +143,6 @@ impl From<BaseContext> for Context1 {
         let deployed = block_on(factory.deploy(()).unwrap().send()).unwrap();
         let null = NullContract::new(deployed.address(), ctx.client.clone());
         let snap_id = block_on(ctx.client.snapshot()).unwrap();
-        // let snap_id = 0.into();
         Context1 {
             snap_id: snap_id,
             client: ctx.client,

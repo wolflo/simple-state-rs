@@ -1,11 +1,27 @@
 use anyhow::Result;
 use ethers::{prelude::*, utils::GanacheInstance};
-use linkme::distributed_slice;
+use linkme::{distributed_slice, DistributedSlice};
 use std::{convert::TryFrom, fs, path::Path, sync::Arc, time::Duration};
+use once_cell::sync::Lazy;
 
 use crate::types::*;
 
 const BUILD_DIR: &'static str = "out";
+
+// const _: () = {
+//     #[distributed_slice(TESTS_FROM_BASE)]
+//     static __: Test<FromBaseContext> = Test {
+//         name: "test_wannacry",
+//         run: |x| Box::pin(test_wannacry(x.into())),
+//     };
+// };
+static foo: Lazy<DS<FromBaseContext>>= Lazy::new(|| TESTS_CTX1.into());
+const _: () = {
+    #[distributed_slice(FROM_BASE)]
+    static __: &'static Lazy<DS<FromBaseContext>> = &foo;
+    // static __: &'static Lazy<DS<FromBaseContext>> = &Lazy::new(|| TESTS_CTX1.into());
+    // static __: &'static DistributedSlice<[Test<FromBaseContext>]> = &TESTS_CTX1.into();
+};
 
 const _: () = {
     #[distributed_slice(TESTS_CTX1)]
