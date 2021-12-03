@@ -8,31 +8,47 @@ use crate::types::*;
 const BUILD_DIR: &'static str = "out";
 
 const _: () = {
-    #[distributed_slice(TESTS)]
-    static __: Test<Context> = Test {
-        name: "test_move_from0",
-        run: |x| Box::pin(test_move_from0(x)),
+    #[distributed_slice(TESTS_CTX1)]
+    static __: Test<Context1> = Test {
+        name: "test_wannacry",
+        run: |x| Box::pin(test_wannacry(x)),
     };
 };
 const _: () = {
-    #[distributed_slice(TESTS)]
-    static __: Test<Context> = Test {
+    #[distributed_slice(TESTS_BASE)]
+    static __: Test<BaseContext> = Test {
+        name: "test_step_from0",
+        run: |x| Box::pin(test_step_from0(x)),
+    };
+};
+const _: () = {
+    #[distributed_slice(TESTS_BASE)]
+    static __: Test<BaseContext> = Test {
         name: "test_setup",
         run: |x| Box::pin(test_setup(x)),
     };
 };
 
-pub async fn test_setup(ctx: Context) -> Result<()> {
-    assert_eq!(ctx.simple.state().call().await?, 0.into());
+pub async fn test_setup(ctx: BaseContext) -> Result<()> {
+    assert_eq!(ctx.state.state().call().await?, 0.into());
     Ok(())
 }
-pub async fn test_move_from0(ctx: Context) -> Result<()> {
-    ctx.simple.move_(1.into()).send().await?;
-    assert_eq!(ctx.simple.state().call().await?, 1.into());
+pub async fn test_step_from0(ctx: BaseContext) -> Result<()> {
+    ctx.state.step(1.into()).send().await?;
+    assert_eq!(ctx.state.state().call().await?, 1.into());
+    Ok(())
+}
+pub async fn test_wannacry(ctx: Context1) -> Result<()> {
+    ctx.state.step(1.into()).send().await?;
+    ctx.state.step(3.into()).send().await?;
+    ctx.state.step(5.into()).send().await?;
+    ctx.state.wannacry(ctx.null.address()).send().await?;
+    ctx.state.step(6.into()).send().await?;
+    assert_eq!(ctx.state.state().call().await?, 6.into());
     Ok(())
 }
 
-pub async fn setup(node: &GanacheInstance, n_accts: usize) -> Result<Context> {
+pub async fn setup(node: &GanacheInstance, n_accts: usize) -> Result<BaseContext> {
     let provider = Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
     let accts: Vec<LocalWallet> = node.keys()[..n_accts]
         .iter()
@@ -44,11 +60,11 @@ pub async fn setup(node: &GanacheInstance, n_accts: usize) -> Result<Context> {
     )));
     let factory = make_factory("SimpleState", &client)?;
     let deployed = factory.deploy(())?.send().await?;
-    let simple = SimpleState::new(deployed.address(), client.clone());
-    Ok(Context {
+    let state = SimpleState::new(deployed.address(), client.clone());
+    Ok(BaseContext {
         client,
         accts,
-        simple,
+        state,
     })
 }
 #[derive(serde::Deserialize)]
