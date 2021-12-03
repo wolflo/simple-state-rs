@@ -61,7 +61,9 @@ pub async fn setup(node: &GanacheInstance, n_accts: usize) -> Result<BaseContext
     let factory = make_factory("SimpleState", &client)?;
     let deployed = factory.deploy(())?.send().await?;
     let state = SimpleState::new(deployed.address(), client.clone());
+    let snap_id = client.snapshot().await?;
     Ok(BaseContext {
+        snap_id,
         client,
         accts,
         state,

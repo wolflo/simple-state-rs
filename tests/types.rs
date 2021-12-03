@@ -1,4 +1,5 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use async_trait::async_trait;
 use ethers::{core::k256::ecdsa::SigningKey, prelude::*};
 use futures::future::Future;
 use futures_executor::block_on;
@@ -22,15 +23,41 @@ pub static TESTS_BASE: [Test<BaseContext>] = [..];
 #[distributed_slice]
 pub static TESTS_CTX1: [Test<Context1>] = [..];
 
+#[async_trait]
+pub trait Context {
+    async fn reset(&mut self) -> Result<()>;
+}
+
 #[derive(Debug, Clone)]
 pub struct BaseContext {
+    pub snap_id: ethers::types::U256,
     pub client: Arc<Client>,
     pub accts: Vec<LocalWallet>,
     pub state: SimpleState<Client>,
 }
 
+#[async_trait]
+impl Context for BaseContext {
+    async fn reset(&mut self) -> Result<()> {
+        self.client.revert_to_snapshot(self.snap_id).await
+        .map_err(|_| anyhow!("Failed to reset snapshot."))?;
+        self.snap_id = self.client.snapshot().await?;
+        Ok(())
+    }
+}
+#[async_trait]
+impl Context for Context1 {
+    async fn reset(&mut self) -> Result<()> {
+        self.client.revert_to_snapshot(self.snap_id).await
+        .map_err(|_| anyhow!("Failed to reset snapshot."))?;
+        self.snap_id = self.client.snapshot().await?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Context1 {
+    pub snap_id: ethers::types::U256,
     pub client: Arc<Client>,
     pub accts: Vec<LocalWallet>,
     pub state: SimpleState<Client>,
@@ -42,15 +69,17 @@ impl From<BaseContext> for Context1 {
         let factory = make_factory("NullContract", &ctx.client).unwrap();
         let deployed = block_on(factory.deploy(()).unwrap().send()).unwrap();
         let null = NullContract::new(deployed.address(), ctx.client.clone());
+        let snap_id = block_on(ctx.client.snapshot()).unwrap();
+        // let snap_id = 0.into();
         Context1 {
+            snap_id: snap_id,
             client: ctx.client,
             accts: ctx.accts,
             state: ctx.state,
-            null: null
+            null: null,
         }
     }
 }
-
 
 abigen!(
     SimpleState,

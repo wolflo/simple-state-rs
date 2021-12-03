@@ -6,7 +6,7 @@ use std::panic::AssertUnwindSafe;
 mod tests;
 mod types;
 use tests::setup;
-use types::{Test, TESTS_BASE, TESTS_CTX1, Context1};
+use types::{Context, Context1, Test, TESTS_BASE, TESTS_CTX1};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -15,12 +15,12 @@ async fn main() -> Result<()> {
     let node: GanacheInstance = Ganache::new().spawn();
     let ctx = setup(&node, 3).await?;
 
-    let (s, f) = run(ctx.clone(), &TESTS_BASE).await?;
+    let (s, f) = run(&mut ctx.clone(), &TESTS_BASE).await?;
     successes += s;
     failures += f;
 
     let ctx1: Context1 = ctx.into();
-    let (s, f) = run(ctx1, &TESTS_CTX1).await?;
+    let (s, f) = run(&mut ctx1.clone(), &TESTS_CTX1).await?;
     successes += s;
     failures += f;
 
@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run<T: Clone>(ctx: T, tests: &'static [Test<T>]) -> Result<(usize, usize)> {
+async fn run<T: Context + Clone>(ctx: &mut T, tests: &'static [Test<T>]) -> Result<(usize, usize)> {
     let mut failures = 0;
     let mut successes = 0;
     for t in tests {
@@ -47,7 +47,7 @@ async fn run<T: Clone>(ctx: T, tests: &'static [Test<T>]) -> Result<(usize, usiz
                 println!("\ntest failed: {} \n\tError: {:?}\n", t.name, e);
             }
         }
+        ctx.reset().await?;
     }
     Ok((successes, failures))
-
 }
