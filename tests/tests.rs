@@ -1,29 +1,34 @@
 use anyhow::Result;
-use std::{convert::TryFrom, fs, path::Path, sync::Arc, time::Duration};
 use ethers::{prelude::*, utils::GanacheInstance};
 use linkme::distributed_slice;
+use std::{convert::TryFrom, fs, path::Path, sync::Arc, time::Duration};
 
 use crate::types::*;
 
 const BUILD_DIR: &'static str = "out";
 
+const _: () = {
+    #[distributed_slice(TESTS)]
+    static __: Test<Context> = Test {
+        name: "test_move_from0",
+        run: |x| Box::pin(test_move_from0(x)),
+    };
+};
+const _: () = {
+    #[distributed_slice(TESTS)]
+    static __: Test<Context> = Test {
+        name: "test_setup",
+        run: |x| Box::pin(test_setup(x)),
+    };
+};
+
 pub async fn test_setup(ctx: Context) -> Result<()> {
-    println!("running test_setup");
+    assert_eq!(ctx.simple.state().call().await?, 0.into());
     Ok(())
 }
-
-const _: () = {
-    #[distributed_slice(TESTS)]
-    static __: Test<Context> = |x| Box::pin(test_setup(x));
-};
-
-const _: () = {
-    #[distributed_slice(TESTS)]
-    static __: Test<Context> = |x| Box::pin(test_move_from0(x));
-};
-
 pub async fn test_move_from0(ctx: Context) -> Result<()> {
-    println!("running test_move_from0");
+    ctx.simple.move_(1.into()).send().await?;
+    assert_eq!(ctx.simple.state().call().await?, 1.into());
     Ok(())
 }
 
@@ -38,10 +43,7 @@ pub async fn setup(node: &GanacheInstance, n_accts: usize) -> Result<Context> {
         accts[0].clone(),
     )));
     let factory = make_factory("SimpleState", &client)?;
-    let deployed = factory
-        .deploy(())?
-        .send()
-        .await?;
+    let deployed = factory.deploy(())?.send().await?;
     let simple = SimpleState::new(deployed.address(), client.clone());
     Ok(Context {
         client,
@@ -58,8 +60,16 @@ pub fn make_factory<M: Middleware>(name: &str, client: &Arc<M>) -> Result<Contra
     let name = String::from(name);
     let build_dir = Path::new(BUILD_DIR);
 
-    let json = fs::read_to_string(&build_dir.join(name.clone() + ".sol").join(name.clone() + ".json"))?;
+    let json = fs::read_to_string(
+        &build_dir
+            .join(name.clone() + ".sol")
+            .join(name.clone() + ".json"),
+    )?;
     let contract: FoundryOutput = serde_json::from_str(&json)?;
 
-    Ok(ContractFactory::new(contract.abi, contract.bin, client.clone()))
+    Ok(ContractFactory::new(
+        contract.abi,
+        contract.bin,
+        client.clone(),
+    ))
 }
