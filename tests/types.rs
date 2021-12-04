@@ -13,7 +13,7 @@ pub type Client = DevRpcMiddleware<SignerMiddleware<Provider<Http>, Wallet<Signi
 pub type AsyncResult = std::pin::Pin<Box<dyn Future<Output = Result<()>>>>;
 pub type Action<T> = fn(T) -> AsyncResult;
 
-pub struct Test<T> {
+pub struct Test<T: ?Sized> {
     pub name: &'static str,
     pub run: Action<T>,
 }
@@ -22,6 +22,9 @@ pub struct Test<T> {
 pub static TESTS_BASE: [Test<BaseContext>] = [..];
 #[distributed_slice]
 pub static TESTS_CTX1: [Test<Context1>] = [..];
+#[distributed_slice]
+pub static TESTS_CTX1_AS: [Test<&'static dyn BuildFromContext<BaseContext>>] = [..];
+// pub static TESTS_CTX1_AS: [Test<Context1 as dyn BuildFromContext<BaseContext>>] = [..];
 
 #[distributed_slice]
 pub static A: [usize] = [..];
@@ -53,7 +56,7 @@ static l1: &'static DistributedSlice<[usize]> = &B;
 #[distributed_slice]
 pub static TESTS_FROM_BASE: [Test<FromBaseContext>] = [..];
 #[distributed_slice]
-pub static FROM_BASE: [Lazy<DS<Test<&'static (dyn BuildFromContext<BaseContext>)>>>] = [..];
+pub static FROM_BASE: [Lazy<DS<Test<dyn BuildFromContext<BaseContext>>>>] = [..];
 // pub static FROM_BASE: [Lazy<DST<FromBaseContext>>] = [..];
 // pub static FROM_BASE: [DST<FromBaseContext>] = [..];
 // pub static FROM_BASE: [&'static DistributedSlice<[Test<FromBaseContext>]>] = [..];
@@ -66,16 +69,17 @@ pub static FROM_BASE: [Lazy<DS<Test<&'static (dyn BuildFromContext<BaseContext>)
 
 
 pub enum FromBaseContext {
-    C1(Context1),
+    Context1,
 }
 impl From<BaseContext> for FromBaseContext {
     fn from(ctx: BaseContext) -> Self {
         ctx.into()
     }
 }
-impl From<Context1> for FromBaseContext {
-    fn from(ctx: Context1) -> Self {
-        Self::C1(ctx)
+impl From<DS<Test<Context1>>> for DS<Test<FromBaseContext>> {
+    fn from(ctx: DS<Test<Context1>>) -> Self {
+        // Self::C1(ctx)
+        unreachable!()
     }
 }
 impl From<Test<Context1>> for Test<FromBaseContext> {
@@ -98,11 +102,24 @@ pub trait Context {
 pub trait BuildFrom<T> {
     fn build_from(&mut self, t: T);
 }
+pub trait BuildInto<T> {
+    fn build_into(self, t: &mut T);
+}
+// pub trait BaseTo1: BuildFrom<BaseContext> + BuildInto<Context1>
 impl BuildFrom<BaseContext> for Context1 { fn build_from(&mut self, b: BaseContext) { } }
+impl BuildInto<Context1> for BaseContext { fn build_into(self, b: &mut Context1) { } }
+// pub struct DS<T: ?Sized>(pub DistributedSlice<[T]>);
+// pub struct DS<T: ?Sized>(pub Box<DistributedSlice<[Box<T>]>>);
 pub struct DS<T>(pub DistributedSlice<[T]>);
-impl From<DistributedSlice<[Test<Context1>]>> for DS<Test<&'static (dyn BuildFromContext<BaseContext>)>> {
+// impl From<DistributedSlice<[Test<Context1>]>> for DS<Test<&'static (dyn BuildFromContext<BaseContext>)>> {
+impl From<DistributedSlice<[Test<Context1>]>> for DS<Test<dyn BuildFromContext<BaseContext>>> {
     fn from(s: DistributedSlice<[Test<Context1>]>) -> Self {
-        s.into()
+        // Self(tests)
+        unreachable!()
+            // tests.push(Box::<dyn BuildFromContext<BaseContext>>::from(*x))
+        // Self(s.map(|el| Box::new(el)))
+        // Self(Box::new(s) as Box<dyn BuildFromContext<BaseContext>>)
+        // Self(s as DistributedSlice<[Box<Test<dyn BuildFromContext<BaseContext>>>]>)
     }
 }
 
@@ -158,6 +175,7 @@ impl From<BaseContext> for Context1 {
     }
 }
 pub trait BuildFromContext<T>: BuildFrom<T> + Context + Send + Sync {}
+impl BuildFromContext<BaseContext> for Context1 {}
 
 abigen!(
     SimpleState,

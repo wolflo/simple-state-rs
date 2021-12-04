@@ -22,11 +22,12 @@ const BUILD_DIR: &'static str = "out";
 //     // static __: &'static Lazy<DS<FromBaseContext>> = &foo;
 //     static __: Lazy<DS<FromBaseContext>> = Lazy::new(|| TESTS_CTX1.into());
 // };
-const _: () = {
-    #[distributed_slice(FROM_BASE)]
-    static __: Lazy<DS<Test<&'static (dyn BuildFromContext<BaseContext>)>>>
-        = Lazy::new(|| TESTS_CTX1.into());
-};
+
+// const _: () = {
+//     #[distributed_slice(FROM_BASE)]
+//     static __: Lazy<DS<Test<dyn BuildFromContext<BaseContext>>>>
+//         = Lazy::new(|| TESTS_CTX1.into());
+// };
 
 const _: () = {
     #[distributed_slice(TESTS_CTX1)]
