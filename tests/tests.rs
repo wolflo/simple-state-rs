@@ -15,12 +15,17 @@ const BUILD_DIR: &'static str = "out";
 //         run: |x| Box::pin(test_wannacry(x.into())),
 //     };
 // };
-static foo: Lazy<DS<FromBaseContext>>= Lazy::new(|| TESTS_CTX1.into());
+// static foo: Lazy<DS<FromBaseContext>>= Lazy::new(|| TESTS_CTX1.into());
+// const _: () = {
+//     #[distributed_slice(FROM_BASE)]
+//     static __: Lazy<DST<FromBaseContext>> = Lazy::new(|| TESTS_CTX1.into());
+//     // static __: &'static Lazy<DS<FromBaseContext>> = &foo;
+//     static __: Lazy<DS<FromBaseContext>> = Lazy::new(|| TESTS_CTX1.into());
+// };
 const _: () = {
     #[distributed_slice(FROM_BASE)]
-    static __: &'static Lazy<DS<FromBaseContext>> = &foo;
-    // static __: &'static Lazy<DS<FromBaseContext>> = &Lazy::new(|| TESTS_CTX1.into());
-    // static __: &'static DistributedSlice<[Test<FromBaseContext>]> = &TESTS_CTX1.into();
+    static __: Lazy<DS<Test<&'static (dyn BuildFromContext<BaseContext>)>>>
+        = Lazy::new(|| TESTS_CTX1.into());
 };
 
 const _: () = {

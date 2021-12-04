@@ -53,7 +53,9 @@ static l1: &'static DistributedSlice<[usize]> = &B;
 #[distributed_slice]
 pub static TESTS_FROM_BASE: [Test<FromBaseContext>] = [..];
 #[distributed_slice]
-pub static FROM_BASE: [&'static Lazy< DS<FromBaseContext>>] = [..];
+pub static FROM_BASE: [Lazy<DS<Test<&'static (dyn BuildFromContext<BaseContext>)>>>] = [..];
+// pub static FROM_BASE: [Lazy<DST<FromBaseContext>>] = [..];
+// pub static FROM_BASE: [DST<FromBaseContext>] = [..];
 // pub static FROM_BASE: [&'static DistributedSlice<[Test<FromBaseContext>]>] = [..];
 // pub static FROM_BASE: [[Tests<FromBaseContext>]];
 
@@ -81,24 +83,27 @@ impl From<Test<Context1>> for Test<FromBaseContext> {
         t.into()
     }
 }
-pub struct DS<T>(pub DistributedSlice<[Test<T>]>);
-impl From<DistributedSlice<[Test<Context1>]>> for DS<FromBaseContext> {
-    fn from(d: DistributedSlice<[Test<Context1>]>) -> Self {
-        // d.map(|t| t.into())
-        d.into()
-    }
-}
-// #[distributed_slice]
-// pub static FROM_BASE_TESTS: [] = [..];
-// // pub static FROM_BASE: [&'static (dyn Send + Sync + From<BaseContext>)] = [..];
-// const _: () = {
-//     #[distributed_slice(FROM_BASE)]
-//     static __: FromBaseContext = FromBaseContext::Foo(Foo { });
-// };
+// pub struct DST<T>(pub DistributedSlice<[Test<T>]>);
+// impl From<DistributedSlice<[Test<Context1>]>> for DST<FromBaseContext> {
+//     fn from(d: DistributedSlice<[Test<Context1>]>) -> Self {
+//         // d.map(|t| t.into())
+//         d.into()
+//     }
+// }
 
 #[async_trait]
 pub trait Context {
     async fn reset(&mut self) -> Result<()>;
+}
+pub trait BuildFrom<T> {
+    fn build_from(&mut self, t: T);
+}
+impl BuildFrom<BaseContext> for Context1 { fn build_from(&mut self, b: BaseContext) { } }
+pub struct DS<T>(pub DistributedSlice<[T]>);
+impl From<DistributedSlice<[Test<Context1>]>> for DS<Test<&'static (dyn BuildFromContext<BaseContext>)>> {
+    fn from(s: DistributedSlice<[Test<Context1>]>) -> Self {
+        s.into()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +157,7 @@ impl From<BaseContext> for Context1 {
         }
     }
 }
+pub trait BuildFromContext<T>: BuildFrom<T> + Context + Send + Sync {}
 
 abigen!(
     SimpleState,

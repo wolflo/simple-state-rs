@@ -7,7 +7,8 @@ use once_cell::sync::Lazy;
 mod tests;
 mod types;
 use tests::setup;
-use types::{Context, Context1, Test, TESTS_BASE, TESTS_CTX1};
+// use types::{Context, Context1, Test, TESTS_BASE, TESTS_CTX1, BaseContext};
+use types::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,18 +32,23 @@ async fn main() -> Result<()> {
 
     // really we need a set of tests rather than a type for each "from" context
     // for each context, we need a set of tests + an iterator over sets of tests
-    // that can be applied to context that can be generated from our context
+    // that can be applied to context that can be generated from our context.
+    // Want to create a list of lists of tests, where each set of tests acts on
+    // a ctx that can be created from current ctx.
+    // I think current problem is enum is being allocated but we need this to be dyn
     for l in types::LISTS {
         for x in **l {
             println!("x: {}", x);
         }
     }
-    for x in types::FROM_BASE {
-        // println!("FROM_BASE");
-        for y in x.0 {
-            println!("FROM_BASE");
-        }
-    }
+    static stat: Lazy<DS<Test<&'static (dyn BuildFromContext<BaseContext>)>>> = Lazy::new(|| TESTS_CTX1.into());
+    let foo = stat.0;
+    // for x in types::FROM_BASE {
+    //     // println!("FROM_BASE");
+    //     for y in x.0 {
+    //         println!("FROM_BASE");
+    //     }
+    // }
     Ok(())
 }
 
