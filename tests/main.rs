@@ -1,3 +1,5 @@
+#![feature(trait_upcasting)]
+
 use anyhow::{Result};
 // use ethers::utils::{Ganache, GanacheInstance};
 // use futures::{self, FutureExt};

@@ -3,13 +3,15 @@ use futures::future::Future;
 use async_trait::async_trait;
 use linkme::{distributed_slice, DistributedSlice};
 
+fn main() {}
+
 pub type AsyncResult = std::pin::Pin<Box<dyn Future<Output = Result<()>>>>;
 pub type Action<T> = fn(&'static T) -> AsyncResult;
 
-pub trait TestSet<'a, T: ?Sized> {
+pub trait TestSet<'a, T: ?Sized, U: BuildFrom<T>> {
     fn ctx(&self) -> &T;
     fn tests(&self) -> DistributedSlice<[Test<T>]>;
-    fn next(&'a self) -> Option<&(dyn TestSet<&dyn BuildFrom<T>> + Send + Sync)>;
+    fn next(&'a self) -> Option<&(dyn TestSet<&dyn Is<T, U>, U> + Send + Sync)>;
     // fn next(&self) -> Option<&'static (dyn TestSet<&'static dyn BuildFrom<T>> + Send + Sync)>;
 }
 #[async_trait]
@@ -51,7 +53,7 @@ pub struct Test<T: ?Sized + 'static> {
 pub struct Tset<'a, T: ?Sized + 'static, U: BuildFrom<T>> {
     pub ctx: &'a T,
     pub tests: DistributedSlice<[Test<T>]>,
-    pub next: Option<&'a (dyn TestSet<'a, &'a dyn Is<T, U>> + Send + Sync)>,
+    pub next: Option<&'a (dyn TestSet<'a, &'a dyn Is<T, U>, U> + Send + Sync)>,
 }
 // pub struct Tset<'a, T: ?Sized + 'static> {
 //     pub ctx: &'a T,
@@ -66,10 +68,10 @@ pub struct Tset<'a, T: ?Sized + 'static, U: BuildFrom<T>> {
 // or that 
 // #[async_trait]
 // impl BuildFrom<Ctx0> for &'_ dyn Is<Ctx0, Ctx1> { async fn build_from(&mut self, t: Ctx0) { unreachable!() }}
-impl<'a, T: Ctx, U: BuildFrom<T>> TestSet<'a, T> for Tset<'a, T, U> {
+impl<'a, T: Ctx, U: BuildFrom<T>> TestSet<'a, T, U> for Tset<'a, T, U> {
     fn ctx(&self) -> &T { &self.ctx }
     fn tests(&self) -> DistributedSlice<[Test<T>]> { self.tests }
-    fn next(&'a self) -> Option<&(dyn TestSet<&dyn BuildFrom<T>> + Send + Sync)> { self.next }
+    fn next(&'a self) -> Option<&(dyn TestSet<&dyn Is<T, U>, U> + Send + Sync)> { self.next }
 }
 // impl<'a, T: BuildFrom<Ctx0>, U: Is<Ctx0, Ctx1>> TestSet<'a, Ctx0> for Tset<'a, Ctx1> {
 //     fn ctx(&self) -> &Ctx1 { &self.ctx }
@@ -83,7 +85,7 @@ impl<'a, T: Ctx, U: BuildFrom<T>> TestSet<'a, T> for Tset<'a, T, U> {
 // }
 
 #[distributed_slice]
-pub static TSETS: [&'static (dyn TestSet<'static, Ctx0> + Send + Sync)] = [..];
+pub static TSETS: [&'static (dyn TestSet<'static, Ctx0, Ctx1> + Send + Sync)] = [..];
 // #[distributed_slice(TSETS)]
 // static _TS0: &'static (dyn TestSet<'static, Ctx0> + Send + Sync) = &Tset { ctx: &Ctx0(), tests: TLIST0, next: Some(_TS1) };
 
@@ -103,8 +105,8 @@ static _TL11: Test<&'static dyn Is<Ctx0, Ctx1>> = Test { name: "tl11", run: |x| 
 #[distributed_slice(TLIST1)]
 static _TL12: Test<&'static dyn Is<Ctx0, Ctx1>> = Test { name: "tl12", run: |x| Box::pin(tl12(*x)) };
 
-// #[async_trait]
-// impl<T: Send, U> BuildFrom<T> for &dyn Is<T, U> { async fn build_from(&mut self, t: T) { unreachable!() }}
+#[async_trait]
+impl<T: Send, U> BuildFrom<T> for &dyn Is<T, U> { async fn build_from(&mut self, t: T) { unreachable!() }}
 
 // Super == BuildFrom<0>
 // Sub   == Is<0, 1>
