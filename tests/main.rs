@@ -1,24 +1,28 @@
-use anyhow::{anyhow, Result};
-use ethers::utils::{Ganache, GanacheInstance};
-use futures::{self, FutureExt};
-use std::panic::AssertUnwindSafe;
-use once_cell::sync::Lazy;
+use anyhow::{Result};
+// use ethers::utils::{Ganache, GanacheInstance};
+// use futures::{self, FutureExt};
+// use std::panic::AssertUnwindSafe;
+// use once_cell::sync::Lazy;
 
 mod scratch;
 use scratch::*;
-mod tests;
-mod types;
+// mod tests;
+// mod types;
 // use tests::setup;
 // use types::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    for tset in TSETS {
-        println!("\nSet");
-        for t in tset.tests() {
-            println!("{}", t.name);
-        }
-    }
+    // for tset in TSETS {
+    //     println!("\nSet");
+    //     for t in tset.tests() {
+    //         println!("{}", t.name);
+    //     }
+    //     match tset.next() {
+    //         Some(n) => println!("Next: {}", n.tests()[0].name),
+    //         None => println!("No next."),
+    //     }
+    // }
 
     // let mut failures = 0;
     // let mut successes = 0;
