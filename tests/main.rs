@@ -13,12 +13,12 @@ mod types;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // for tset in SETS1 {
-    //     println!("\nSet");
-    //     for t in tset.tests() {
-    //         println!("{}", t.name);
-    //     }
-    // }
+    for tset in TSETS {
+        println!("\nSet");
+        for t in tset.tests() {
+            println!("{}", t.name);
+        }
+    }
 
     // let mut failures = 0;
     // let mut successes = 0;
