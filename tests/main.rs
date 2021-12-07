@@ -1,4 +1,6 @@
-#![feature(trait_upcasting)]
+// #![feature(trait_upcasting)]
+// #![feature(arbitrary_self_types)]
+#![feature(generic_associated_types)]
 
 use anyhow::{Result};
 // use ethers::utils::{Ganache, GanacheInstance};
@@ -6,15 +8,14 @@ use anyhow::{Result};
 // use std::panic::AssertUnwindSafe;
 // use once_cell::sync::Lazy;
 
-mod scratch;
-use scratch::*;
-// mod tests;
-// mod types;
-// use tests::setup;
-// use types::*;
+mod enum_version;
+mod fns_only;
+// use enum_version::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    fns_only::gmain();
+    // let z = _TLC.get(0);
     // for tset in TSETS {
     //     println!("\nSet");
     //     for t in tset.tests() {

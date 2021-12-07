@@ -2,148 +2,216 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
+use std::{convert::TryFrom, time::Duration, sync::Arc};
 use anyhow::{anyhow, Result};
 use futures::future::Future;
 use async_trait::async_trait;
 use linkme::{distributed_slice, DistributedSlice};
+use ethers::{
+    core::k256::ecdsa::SigningKey,
+    types::U256,
+    utils::Ganache,
+    prelude::*,
+};
 
 pub fn gmain() {
-    // run_state(NullState, &STATES_FROM_NULL_STATE, &FNS_ON_NULL_STATE);
-    // run_state(NullState, &STATES_FROM_NULL_STATE, &FNS_ON_NULL_STATE);
+    // run_state(NullS, &STATES_FROM_NULL_STATE, &FNS_ON_NULL_STATE);
     // dispatch::<S1>
 }
 
-fn run_state<B, S>(base: B, sub_states: &[fn(S)], tests: &[fn(S)])
-where
-    S: StateFrom<B> + DevClient + Clone
-{
-    let state: S = S::new(base);
-    let mut snap_id = state.snap();
-    for runner in sub_states {
-        runner(state.clone());
-        state.reset(snap_id);
-        snap_id = state.snap();
-    }
-    for t in tests {
-        t(state.clone());
-        state.reset(snap_id);
-        snap_id = state.snap();
-    }
+pub type Client = DevRpcMiddleware<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>;
+pub type AsyncResult = std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+pub type Action<T> = fn(T) -> AsyncResult;
+#[derive(Clone)]
+pub struct NullState;
+#[async_trait]
+impl State for NullState {
+    type Prev = NullState;
+    async fn new(_prev: &Self::Prev) -> Result<Self> { Ok(NullState) }
 }
-
+#[distributed_slice]
+pub static STATES_FROM_NULL_STATE: [Action<&'static NullState>] = [..];
 pub struct Test<S> {
     pub name: &'static str,
-    pub run: fn(S),
+    pub run: Action<S>,
 }
-
-// fn run_s1(b: NullState) { run_state(b, &STATES_FROM_S1, &FNS_ON_S1) }
-// static _S01: fn(NullState) = run::<S1>;
-
-
-fn dispatch<S, R, P>(prev_state: P) where S: State<Prev=P>, R: Runner<State=S> {
-    let state: S = S::new(prev_state);
-    let runner: R = R::new(state.clone());
-    runner.run();
+pub async fn dispatch<S, R, P>(prev_state: &P) -> Result<()>
+where
+    S: State<Prev=P>,
+    R: Runner<State=S> + Sync
+{
+    let state: S = S::new(prev_state).await.unwrap();
+    let runner: R = R::new(state);
+    runner.run().await
 }
-
-pub trait StateFrom<T> { fn new(src: T) -> Self; }
-impl<T> StateFrom<T> for T { fn new(src: T) -> Self { src }}
-
 
 #[derive(Debug, Clone)]
-pub struct NullState;
-impl DevClient for NullState {}
-#[distributed_slice]
-pub static FNS_ON_NULL_STATE: [fn(NullState)] = [..];
-#[distributed_slice]
-pub static STATES_FROM_NULL_STATE: [fn(NullState)] = [..];
-
-pub trait DevClient {
-    // client() needs to be impl by users so we can provide default
-    // impls for snap and reset?
-    // fn client(&self) -> DevRpcMiddleware;
-    fn snap(&self) -> u64 { 17 }
-    fn reset(&self, id: u64) {}
+pub struct BaseState {
+    pub snap_id: Option<U256>,
+    pub client: Arc<Client>,
+    pub accts: Vec<LocalWallet>,
 }
+#[async_trait]
+impl State for BaseState {
+    type Prev = NullState;
+    async fn new(prev: &Self::Prev) -> Result<Self> {
+        let node = Ganache::new().spawn();
+        let provider = Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
+        let accts: Vec<LocalWallet> = node.keys()[..5]
+            .iter()
+            .map(|x| x.clone().into())
+            .collect();
+        let client = Arc::new(DevRpcMiddleware::new(SignerMiddleware::new(
+            provider,
+            accts[0].clone(),
+        )));
+        let snap_id = None;
+        Ok(Self {
+            snap_id,
+            client,
+            accts,
+        })
+    }
+}
+#[distributed_slice]
+pub static BASE_STATE_TESTS: [Action<&'static BaseState>] = [..];
+#[distributed_slice]
+pub static STATES_FROM_BASE_STATE: [Action<&'static BaseState>] = [..];
+#[distributed_slice(STATES_FROM_NULL_STATE)]
+static __SN1: Action<&NullState> = |x| Box::pin(dispatch::<BaseState, BaseBlock, NullState>(&x));
+#[derive(Debug)]
+pub struct BaseBlock<'a> {
+    pub name: &'static str,
+    pub state: BaseState,
+    pub tests: &'a [Action<&'a BaseState>],
+}
+#[async_trait]
+impl Block for BaseBlock<'static> {
+    type State = BaseState;
+    fn new(state: Self::State) -> Self {
+        Self { name: "BaseBlock", state: state, tests: &BASE_STATE_TESTS }
+    }
+    fn state(&self) -> &Self::State { &self.state }
+}
+impl Runner for BaseBlock<'static> {}
 
-pub trait State: Clone {
+#[async_trait]
+pub trait State: Clone + Send + Sync {
     type Prev: State;
-    fn new(base: Self::Prev) -> Self;
+    async fn new(prev: &Self::Prev) -> Result<Self>;
 }
-pub trait Block: Clone {
+#[async_trait]
+pub trait Block {
     type State: State;
     fn new(state: Self::State) -> Self;
-    fn state(&self) -> Self::State;
-    fn tests(&self) -> &[Test<Self::State>] { &[] }
-    fn children(&self) -> &[fn(Self::State)] { &[] }
-    fn before_each(&self) { () }
-    fn after_each(&self) { () }
-    fn after(&self) { () }
+    fn state(&self) -> &Self::State;
+    fn tests(&self) -> &[Test<&Self::State>] { &[] }
+    fn children(&self) -> &[Action<&Self::State>] { &[] }
+    async fn before_each(&self) -> Result<()> { Ok(()) }
+    async fn after_each(&self) -> Result<()> { Ok(()) }
+    async fn after(&self) -> Result<()> { Ok(()) }
 }
+#[async_trait]
 pub trait Runner: Block {
-    fn run_tests(&self) {
+    async fn run_tests(&self) -> Result<()> {
         for t in self.tests() {
             println!("{}", t.name);
-            self.before_each();
-            (t.run)(self.state().clone());
-            self.after_each();
+            self.before_each().await?;
+            (t.run)(self.state()).await?;
+            self.after_each().await?;
         }
-        self.after();
+        self.after().await
     }
-    fn run_children(&self) {
+    async fn run_children(&self) -> Result<()> {
         for runner in self.children() {
-            self.before_each();
-            runner(self.state().clone());
-            self.after_each();
+            self.before_each().await?;
+            runner(self.state()).await?;
+            self.after_each().await?;
         }
+        Ok(())
     }
-    fn run(&self) {
-        self.run_children();
-        self.run_tests();
+    async fn run(&self) -> Result<()> {
+        self.run_children().await?;
+        self.run_tests().await
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct S1;
-impl StateFrom<NullState> for S1 { fn new(s: NullState) -> Self { S1 } }
+// pub trait StateFrom<T> { fn new(src: T) -> Self; }
+// impl<T> StateFrom<T> for T { fn new(src: T) -> Self { src }}
 
-// macro generated:
-impl DevClient for S1 {}
-#[distributed_slice]
-pub static FNS_ON_S1: [fn(S1)] = [..];
-#[distributed_slice]
-pub static STATES_FROM_S1: [fn(S1)] = [..];
-#[distributed_slice(STATES_FROM_NULL_STATE)]
-static _S01: fn(NullState) = run_s1;
-fn run_s1(b: NullState) { run_state(b, &STATES_FROM_S1, &FNS_ON_S1) }
+// #[derive(Debug, Clone)]
+// pub struct NullS;
+// impl DevClient for NullS {}
+// #[distributed_slice]
+// pub static FNS_ON_NULL_STATE: [fn(NullS)] = [..];
+// #[distributed_slice]
+// pub static STATES_FROM_NULL_STATE: [fn(NullS)] = [..];
 
-#[derive(Debug, Clone)]
-pub struct S2;
-impl StateFrom<S1> for S2 { fn new(s: S1) -> Self { S2 } }
+// pub trait DevClient {
+//     // client() needs to be impl by users so we can provide default
+//     // impls for snap and reset?
+//     // fn client(&self) -> DevRpcMiddleware;
+//     fn snap(&self) -> u64 { 17 }
+//     fn reset(&self, id: u64) {}
+// }
 
-impl DevClient for S2 {}
-#[distributed_slice]
-pub static FNS_ON_S2: [fn(S2)] = [..];
-#[distributed_slice]
-pub static STATES_FROM_S2: [fn(S2)] = [..];
-#[distributed_slice(STATES_FROM_S1)]
-static _S11: fn(S1) = run_s2;
-fn run_s2(b: S1) { run_state(b, &STATES_FROM_S2, &FNS_ON_S2) }
+// #[derive(Debug, Clone)]
+// pub struct S1;
+// impl StateFrom<NullS> for S1 { fn new(s: NullS) -> Self { S1 } }
 
-#[distributed_slice(FNS_ON_S1)]
-static _T11: fn(S1) = act_on_s1a;
-pub fn act_on_s1a(_: S1) { println!("act_on_s1a"); }
-#[distributed_slice(FNS_ON_S1)]
-static _T12: fn(S1) = act_on_s1b;
-pub fn act_on_s1b(_: S1) { println!("act_on_s1b"); }
-#[distributed_slice(FNS_ON_S2)]
-static _T21: fn(S2) = act_on_s2a;
-pub fn act_on_s2a(_: S2) { println!("act_on_s2a"); }
-#[distributed_slice(FNS_ON_S2)]
-static _T22: fn(S2) = act_on_s2b;
-pub fn act_on_s2b(_: S2) { println!("act_on_s2b"); }
+// // macro generated:
+// impl DevClient for S1 {}
+// #[distributed_slice]
+// pub static FNS_ON_S1: [fn(S1)] = [..];
+// #[distributed_slice]
+// pub static STATES_FROM_S1: [fn(S1)] = [..];
+// #[distributed_slice(STATES_FROM_NULL_STATE)]
+// static _S01: fn(NullS) = run_s1;
+// fn run_s1(b: NullS) { run_state(b, &STATES_FROM_S1, &FNS_ON_S1) }
 
+// #[derive(Debug, Clone)]
+// pub struct S2;
+// impl StateFrom<S1> for S2 { fn new(s: S1) -> Self { S2 } }
 
+// impl DevClient for S2 {}
+// #[distributed_slice]
+// pub static FNS_ON_S2: [fn(S2)] = [..];
+// #[distributed_slice]
+// pub static STATES_FROM_S2: [fn(S2)] = [..];
+// #[distributed_slice(STATES_FROM_S1)]
+// static _S11: fn(S1) = run_s2;
+// fn run_s2(b: S1) { run_state(b, &STATES_FROM_S2, &FNS_ON_S2) }
+
+// #[distributed_slice(FNS_ON_S1)]
+// static _T11: fn(S1) = act_on_s1a;
+// pub fn act_on_s1a(_: S1) { println!("act_on_s1a"); }
+// #[distributed_slice(FNS_ON_S1)]
+// static _T12: fn(S1) = act_on_s1b;
+// pub fn act_on_s1b(_: S1) { println!("act_on_s1b"); }
+// #[distributed_slice(FNS_ON_S2)]
+// static _T21: fn(S2) = act_on_s2a;
+// pub fn act_on_s2a(_: S2) { println!("act_on_s2a"); }
+// #[distributed_slice(FNS_ON_S2)]
+// static _T22: fn(S2) = act_on_s2b;
+// pub fn act_on_s2b(_: S2) { println!("act_on_s2b"); }
+
+// fn run_state<B, S>(base: B, sub_states: &[fn(S)], tests: &[fn(S)])
+// where
+//     S: StateFrom<B> + DevClient + Clone
+// {
+//     let state: S = S::new(base);
+//     let mut snap_id = state.snap();
+//     for runner in sub_states {
+//         runner(state.clone());
+//         state.reset(snap_id);
+//         snap_id = state.snap();
+//     }
+//     for t in tests {
+//         t(state.clone());
+//         state.reset(snap_id);
+//         snap_id = state.snap();
+//     }
+// }
 // would need to take the array of child states and
 // fn run_<S: From<B>, B>(base: B) {
 //     let state: S = S::from(base);
@@ -153,8 +221,8 @@ pub fn act_on_s2b(_: S2) { println!("act_on_s2b"); }
 //     }
 //     for f in FNS_ON_NULL_STATE
 // }
-// fn run_null(base: NullState) {
-//     let state: NullState = NullState::state_from(base); // must store snap_id
+// fn run_null(base: NullS) {
+//     let state: NullS = NullS::state_from(base); // must store snap_id
 //     let mut snap_id = state.snap();
 //     for run_sub_state in STATES_FROM_NULL_STATE {
 //         run_sub_state(state.clone());
@@ -167,7 +235,7 @@ pub fn act_on_s2b(_: S2) { println!("act_on_s2b"); }
 //         snap_id = state.snap();
 //     }
 // }
-// fn run_s1(base: NullState) {
+// fn run_s1(base: NullS) {
 //     let state: S1 = S1::state_from(base); // must store snap_id
 //     let mut snap_id = state.snap();
 //     for run_sub_state in STATES_FROM_S1 {
@@ -181,3 +249,4 @@ pub fn act_on_s2b(_: S2) { println!("act_on_s2b"); }
 //         snap_id = state.snap();
 //     }
 // }
+
