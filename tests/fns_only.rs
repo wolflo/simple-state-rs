@@ -15,17 +15,15 @@ use ethers::{
 };
 
 pub async fn gmain() -> Result<()> {
-    dispatch_old::<NullState, NullState, NullBlock>(&NullState).await.unwrap();
+    let node = Ganache::new().spawn();
+    let provider = Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
+    let client = DevRpcMiddleware::new(provider);
 
-    // let hooks = DecRpcHooks::new();
-    // let runner = HookRunner::new(&hooks);
-    // dispatch::<NullState, NullState, >(&NullState).await.unwrap();
-
-    // let runner = HookRunner::new(&DefaultHooks);
+    // let mut hooks = DevRpcHooks::new(client);
+    // let mut runner = HookRunner::new(&mut hooks);
+    // dispatch::<_, _, NullState>(&mut runner, &NullState).await.unwrap();
 
     Ok(())
-    // run_state(NullS, &STATES_FROM_NULL_STATE, &FNS_ON_NULL_STATE);
-    // dispatch::<S1>
 }
 #[async_trait]
 pub trait Hooks: Send + Sync {
@@ -35,7 +33,8 @@ pub trait Hooks: Send + Sync {
 }
 #[async_trait]
 pub trait Runner {
-    async fn run<'s, S: Sync>(&mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()>;
+    // async fn run<'s, S: Sync>(&mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()>;
+    async fn run<'s, S: Send + Sync>(&'s mut self, state: &'s S, tests: &'s [Test<&'s S>], children: &'s [Action<&'s S>]) -> Result<()>;
 }
 struct DevRpcHooks<M: Middleware> {
     snap_id: U256,
@@ -61,16 +60,7 @@ struct HookRunner<'h, H: Hooks> {
 }
 impl<'h, H: Hooks> HookRunner<'h, H> {
     pub fn new(hooks: &'h mut H) -> Self { Self { hooks } }
-    async fn run_tests<'s, S: Sync>(&mut self, state: &'s S, tests: &[Test<&'s S>]) -> Result<()> {
-        for t in tests {
-            println!("{}", t.name);
-            self.hooks.before_each().await?;
-            (t.run)(state).await?;
-            self.hooks.after_each().await?;
-        }
-        Ok(())
-    }
-    async fn run_children<'s, S: Sync>(&mut self, state: &'s S, children: &[Action<&'s S>]) -> Result<()> {
+    async fn run_children<'s, S: Send + Sync>(&mut self, state: &'s S, children: &[Action<&'s S>]) -> Result<()> {
         for runner in children {
             self.hooks.before_each().await?;
             runner(state).await?;
@@ -78,20 +68,29 @@ impl<'h, H: Hooks> HookRunner<'h, H> {
         }
         Ok(())
     }
-}
-#[async_trait]
-impl<H: Hooks> Runner for HookRunner<'_, H> {
-    async fn run<'s, S: Sync>(&mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()> {
-        self.run_children(state, children).await?;
-        self.run_tests(state, tests).await?;
-        self.hooks.after().await
+    async fn run_tests<'s, S: Send + Sync>(&mut self, state: &'s S, tests: &'s [Test<&'s S>]) -> Result<()> {
+        // for t in tests {
+        //     println!("{}", t.name);
+        //     self.hooks.before_each().await?;
+        //     (t.run)(state).await?;
+        //     self.hooks.after_each().await?;
+        // }
+        Ok(())
     }
 }
+// #[async_trait]
+// impl<H: Hooks> Runner for HookRunner<'_, H> {
+//     async fn run<'s, S: Send + Sync>(&mut self, state: &'s S, tests: &'s [Test<&'s S>], children: &'s [Action<&'s S>]) -> Result<()> {
+//         // self.run_children(&state, children).await?;
+//         self.run_tests(state, tests).await?;
+//         self.hooks.after().await
+//     }
+// }
 
-pub async fn dispatch<R, P, S>(runner: &mut R, prev_state: &P) -> Result<()>
+pub async fn dispatch<'a, R, P, S>(runner: &mut R, prev_state: &P) -> Result<()>
 where
     R: Runner,
-    S: State<Prev=P> + TestSet<State=S>,
+    S: 'a + State<Prev=P> + TestSet<State=S>,
 {
     let state = S::new(prev_state).await?;
     let tests = S::tests();
@@ -242,16 +241,24 @@ pub trait RunnerOld: HooksOld {
 
 pub trait TestSet {
     type State: State;
-    // fn tests() -> &'a [Test<&'a Self::State>] { &[] }
-    // fn children() -> &'a [Action<&'a Self::State>] { &[] }
-    // fn tests() -> &'a [Test<&'s Self::State>] { &[] }
     fn tests<'a>() -> &'a [Test<&'a Self::State>] { &[] }
     fn children<'a>() -> &'a [Action<&'a Self::State>] { &[] }
 }
-// impl TestSet for BaseState {
+impl TestSet for NullState { type State = NullState; }
+
+// #[distributed_slice]
+// pub static BASE_STATE_TESTS_11: [Test<&'static BaseState>] = [..];
+// #[distributed_slice]
+// pub static STATES_FROM_BASE_STATE_11: [Action<&'static BaseState>] = [..];
+// pub trait TestSet11 {
+//     type State: State;
+//     fn tests<'a>() -> &'a [Test<&'static Self::State>] { &[] }
+//     fn children<'a>() -> &'a [Action<&'static Self::State>] { &[] }
+// }
+// impl TestSet11 for BaseState {
 //     type State = BaseState;
-//     fn tests() -> &'static [Test<&'static Self::State>] { &BASE_STATE_TESTS }
-//     fn children() -> &'static [Action<&'static Self::State>] { &STATES_FROM_BASE_STATE }
+//     fn tests<'a, 's>() -> &'a [Test<&'static Self::State>] { &BASE_STATE_TESTS_11 }
+//     fn children<'a, 's>() -> &'a [Action<&'static Self::State>] { &STATES_FROM_BASE_STATE_11 }
 // }
 
 // pub trait StateFrom<T> { fn new(src: T) -> Self; }
