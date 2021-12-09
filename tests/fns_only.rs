@@ -15,9 +15,9 @@ use ethers::{
 };
 
 pub type Client = DevRpcMiddleware<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>;
-pub type AsyncResult = std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send>>;
-pub type Action<T> = fn(T) -> AsyncResult;
-pub type StateMove<R, S> = fn(&R, S) -> AsyncResult;
+pub type AsyncResult<R> = std::pin::Pin<Box<dyn Future<Output = R> + Send>>;
+pub type Action<T> = fn(T) -> AsyncResult<Result<()>>;
+pub type StateMove<P, S> = fn(P) -> AsyncResult<S>;
 
 pub async fn gmain() -> Result<()> {
     let node = Ganache::new().spawn();
@@ -26,7 +26,7 @@ pub async fn gmain() -> Result<()> {
 
     let mut hooks = DevRpcHooks::new(client);
     let mut runner = HookRunner::new(&mut hooks);
-    runner.start::<NullState, NullState>(&NullState)?;
+    runner.start::<NullState, NullState>(&NullState).await?;
     // dispatch::<_, _, NullState>(&mut runner, &NullState).await.unwrap();
 
     Ok(())
@@ -49,10 +49,7 @@ pub async fn move_state<'a, P, S>(prev_state: &P) -> Result<S>
 where
     S: 'a + State<Prev=P> + TestSet<State=S>,
 {
-    let state = S::new(prev_state).await?;
-    let tests = state.tests_();
-    Ok(state)
-    // let children = S::children();
+    S::new(prev_state).await
 }
 
 // pub async fn dispatch<'a, R, P, S>(runner: &mut R, prev_state: &P) -> Result<()>
@@ -139,7 +136,7 @@ impl<H: Hooks> Runner for HookRunner<'_, H> {
 }
 impl<'h, H: Hooks> HookRunner<'h, H> {
     pub fn new(hooks: &'h mut H) -> Self { Self { hooks } }
-    async fn run_children<'s, S: Send + Sync>(&mut self, state: &'s S, children: &[Action<&'s S>]) -> Result<()> {
+    async fn run_children<'s, S: Send + Sync, N>(&mut self, state: &'s S, children: &[StateMove<&'s S, N>]) -> Result<()> {
         for child in children {
             self.hooks.before_each().await?;
             // self.run_child(state, child).await?;
@@ -151,7 +148,7 @@ impl<'h, H: Hooks> HookRunner<'h, H> {
         }
         Ok(())
     }
-    async fn run_child<'s, S: Send + Sync>(&self, state: &'s S, child: &Action<&'s S>) -> Result<()> {
+    async fn run_child<'s, S: Send + Sync, N>(&self, state: &'s S, child: &StateMove<&'s S, N>) -> Result<()> {
         Ok(())
     }
     async fn run_tests<'s, S: Send + Sync>(&mut self, state: &'s S, tests: &[Test<&'s S>]) -> Result<()> {
@@ -166,7 +163,7 @@ impl<'h, H: Hooks> HookRunner<'h, H> {
 }
 
 #[distributed_slice]
-pub static STATES_FROM_NULL_STATE: [Action<&'static NullState>] = [..];
+pub static STATES_FROM_NULL_STATE: [StateMove<&'static NullState>] = [..];
 #[distributed_slice]
 pub static TESTS_ON_NULL_STATE: [Test<&'static NullState>] = [..];
 
@@ -202,22 +199,23 @@ impl State for BaseState {
 }
 
 // --- Macro defined
-// #[distributed_slice]
-// pub static TESTS_ON_BASE_STATE: [Test<&'static BaseState>] = [..];
-// #[distributed_slice]
-// pub static STATES_FROM_BASE_STATE: [StateMove<&'static BaseState>] = [..];
-// #[distributed_slice(STATES_FROM_NULL_STATE)]
-// static __SN1: StateMove<&NullState> = |r, s| Box::pin(dispatch::<HookRunner, NullState, BaseState>(r, &s));
+#[distributed_slice]
+pub static TESTS_ON_BASE_STATE: [Test<&'static BaseState>] = [..];
+#[distributed_slice]
+pub static STATES_FROM_BASE_STATE: [StateMove<&'static BaseState>] = [..];
+#[distributed_slice(STATES_FROM_NULL_STATE)]
+static __SN1: StateMove<&NullState> = |s| Box::pin(move_state::<NullState, BaseState>(&s));
 
 
 pub trait TestSet {
     type State: State;
     fn tests<'a>() -> &'a [Test<&'a Self::State>] { &[] }
-    fn children<'a>() -> &'a [Action<&'a Self::State>] { &[] }
+    fn children<'a>() -> &'a [StateMove<&'a Self::State>] { &[] }
     fn tests_<'a>(&'a self) -> &'a [Test<&'a Self::State>] { &[] }
-    fn children_<'a>(&'a self) -> &'a [Action<&'a Self::State>] { &[] }
+    fn children_<'a>(&'a self) -> &'a [StateMove<&'a Self::State>] { &[] }
 }
 impl TestSet for NullState { type State = NullState; }
+impl TestSet for BaseState { type State = BaseState; }
 
 #[async_trait]
 pub trait State: Clone + Send + Sync {
