@@ -23,48 +23,12 @@ pub async fn gmain() -> Result<()> {
     let node = Ganache::new().spawn();
     let provider = Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
     let client = DevRpcMiddleware::new(provider);
-
     let mut hooks = DevRpcHooks::new(client);
     let mut runner = HookRunner::new(&mut hooks);
     runner.start::<NullState, NullState>(&NullState).await?;
     // dispatch::<_, _, NullState>(&mut runner, &NullState).await.unwrap();
-
     Ok(())
 }
-
-// pub async fn start_runner<'a, R, P, S>(runner: &mut R, prev_state: &P) -> Result<()>
-// where
-//     R: Runner,
-//     S: 'a + State<Prev=P> + TestSet<State=S>,
-// {
-//     let state = S::new(prev_state).await?;
-//     let tests = S::tests();
-//     let children = S::children();
-//     runner.run(&state, &tests, &children).await?;
-//     // runner.start(&state, &tests, &children).await?;
-//     Ok(())
-// }
-
-pub async fn move_state<'a, P, S>(prev_state: &P) -> Result<S>
-where
-    S: 'a + State<Prev=P> + TestSet<State=S>,
-{
-    S::new(prev_state).await
-}
-
-// pub async fn dispatch<'a, R, P, S>(runner: &mut R, prev_state: &P) -> Result<()>
-// where
-//     R: Runner,
-//     S: 'a + State<Prev=P> + TestSet<State=S>,
-// {
-//     let state = S::new(prev_state).await?;
-//     let tests = S::tests();
-//     let children = S::children();
-//     runner.run(&state, &tests, &children).await?;
-//     Ok(())
-// }
-
-
 
 #[derive(Debug, Clone)]
 pub struct NullState;
@@ -86,7 +50,6 @@ pub trait Hooks: Send + Sync {
 }
 #[async_trait]
 pub trait Runner {
-    // async fn run<'s, S: Send + Sync>(&'s mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()>;
     async fn start<'s, P, S>(&'s mut self, prev_state: &'s P) -> Result<()>
     where
         P: Sync,
@@ -116,11 +79,6 @@ pub struct HookRunner<'h, H: Hooks> {
 }
 #[async_trait]
 impl<H: Hooks> Runner for HookRunner<'_, H> {
-    // async fn run<'s, S: Send + Sync>(&'s mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()> {
-    //     self.run_children(state, children).await?;
-    //     self.run_tests(state, tests).await?;
-    //     self.hooks.after().await
-    // }
     async fn start<'s, P, S>(&'s mut self, prev_state: &'s P) -> Result<()>
     where
         P: Sync,
@@ -139,10 +97,11 @@ impl<'h, H: Hooks> HookRunner<'h, H> {
     async fn run_children<'s, S: Send + Sync, N>(&mut self, state: &'s S, children: &[StateMove<&'s S, N>]) -> Result<()> {
         for child in children {
             self.hooks.before_each().await?;
-            // self.run_child(state, child).await?;
-            // self.run()
+
+            // child is a fn pointer to move_state
             // let state = child(state).await?;
             // let (tests, children) = (state.tests_(), state.children_());
+            // child_type::new(state).await?
 
             self.hooks.after_each().await?;
         }
@@ -162,10 +121,19 @@ impl<'h, H: Hooks> HookRunner<'h, H> {
     }
 }
 
-#[distributed_slice]
-pub static STATES_FROM_NULL_STATE: [StateMove<&'static NullState>] = [..];
-#[distributed_slice]
-pub static TESTS_ON_NULL_STATE: [Test<&'static NullState>] = [..];
+#[async_trait]
+pub trait State: Clone + Send + Sync {
+    type Prev: State;
+    async fn new(prev: &Self::Prev) -> Result<Self>;
+}
+
+pub trait TestSet {
+    type State: State;
+    fn tests<'a>() -> &'a [Test<&'a Self::State>] { &[] }
+    fn children<'a>() -> &'a [Action<&'a Self::State>] { &[] }
+    fn tests_<'a>(&'a self) -> &'a [Test<&'a Self::State>] { &[] }
+    fn children_<'a>(&'a self) -> &'a [Action<&'a Self::State>] { &[] }
+}
 
 // --- User defined
 #[derive(Debug, Clone)]
@@ -198,210 +166,56 @@ impl State for BaseState {
     }
 }
 
-// --- Macro defined
-#[distributed_slice]
-pub static TESTS_ON_BASE_STATE: [Test<&'static BaseState>] = [..];
-#[distributed_slice]
-pub static STATES_FROM_BASE_STATE: [StateMove<&'static BaseState>] = [..];
-#[distributed_slice(STATES_FROM_NULL_STATE)]
-static __SN1: StateMove<&NullState> = |s| Box::pin(move_state::<NullState, BaseState>(&s));
-
-
-pub trait TestSet {
-    type State: State;
-    fn tests<'a>() -> &'a [Test<&'a Self::State>] { &[] }
-    fn children<'a>() -> &'a [StateMove<&'a Self::State>] { &[] }
-    fn tests_<'a>(&'a self) -> &'a [Test<&'a Self::State>] { &[] }
-    fn children_<'a>(&'a self) -> &'a [StateMove<&'a Self::State>] { &[] }
-}
 impl TestSet for NullState { type State = NullState; }
 impl TestSet for BaseState { type State = BaseState; }
 
-#[async_trait]
-pub trait State: Clone + Send + Sync {
-    type Prev: State;
-    async fn new(prev: &Self::Prev) -> Result<Self>;
-}
-
-// pub trait Block {
-//     type State: State;
-//     fn new(state: Self::State) -> Self;
-//     fn state(&self) -> &Self::State;
-//     fn tests(&self) -> &[Test<&Self::State>] { &[] }
-//     fn children(&self) -> &[Action<&Self::State>] { &[] }
-// }
-// #[async_trait]
-// pub trait HooksOld: Block {
-//     async fn before_each(&self) -> Result<()> { Ok(()) }
-//     async fn after_each(&self) -> Result<()> { Ok(()) }
-//     async fn after(&self) -> Result<()> { Ok(()) }
-// }
-// #[async_trait]
-// pub trait RunnerOld: HooksOld {
-//     async fn run_tests(&self) -> Result<()> {
-//         for t in self.tests() {
-//             println!("{}", t.name);
-//             self.before_each().await?;
-//             (t.run)(self.state()).await?;
-//             self.after_each().await?;
-//         }
-//         Ok(())
-//     }
-//     async fn run_children(&self) -> Result<()> {
-//         for runner in self.children() {
-//             self.before_each().await?;
-//             runner(self.state()).await?;
-//             self.after_each().await?;
-//         }
-//         Ok(())
-//     }
-//     async fn run(&self) -> Result<()> {
-//         self.run_children().await?;
-//         self.run_tests().await?;
-//         self.after().await
-//     }
-// }
-
-
-// #[derive(Debug)]
-// pub struct BaseBlock { pub state: BaseState, }
-// #[async_trait]
-// impl Block for BaseBlock {
-//     type State = BaseState;
-//     fn new(state: Self::State) -> Self { Self { state } }
-//     fn state(&self) -> &Self::State { &self.state }
-//     fn tests(&self) -> &'static [Test<&Self::State>] { &TESTS_ON_BASE_STATE }
-//     fn children(&self) -> &'static [Action<&Self::State>] { &STATES_FROM_BASE_STATE }
-// }
-
-// impl HooksOld for BaseBlock {}
-// impl RunnerOld for BaseBlock {}
+// pub static FOO: [StatesFromNull; 0] = [|s| B::new(s)];
 // #[distributed_slice]
-// pub static BASE_STATE_TESTS_11: [Test<&'static BaseState>] = [..];
+// pub static STATES_FROM_NULL_STATE: [StateMove<&'static NullState>] = [..];
 // #[distributed_slice]
-// pub static STATES_FROM_BASE_STATE_11: [Action<&'static BaseState>] = [..];
-// pub trait TestSet11 {
-//     type State: State;
-//     fn tests<'a>() -> &'a [Test<&'static Self::State>] { &[] }
-//     fn children<'a>() -> &'a [Action<&'static Self::State>] { &[] }
-// }
-// impl TestSet11 for BaseState {
-//     type State = BaseState;
-//     fn tests<'a, 's>() -> &'a [Test<&'static Self::State>] { &BASE_STATE_TESTS_11 }
-//     fn children<'a, 's>() -> &'a [Action<&'static Self::State>] { &STATES_FROM_BASE_STATE_11 }
-// }
-
-// pub trait StateFrom<T> { fn new(src: T) -> Self; }
-// impl<T> StateFrom<T> for T { fn new(src: T) -> Self { src }}
-
-// #[derive(Debug, Clone)]
-// pub struct NullS;
-// impl DevClient for NullS {}
+// pub static TESTS_ON_NULL_STATE: [Test<&'static NullState>] = [..];
 // #[distributed_slice]
-// pub static FNS_ON_NULL_STATE: [fn(NullS)] = [..];
+// pub static TESTS_ON_BASE_STATE: [Test<&'static BaseState>] = [..];
 // #[distributed_slice]
-// pub static STATES_FROM_NULL_STATE: [fn(NullS)] = [..];
-
-// pub trait DevClient {
-//     // client() needs to be impl by users so we can provide default
-//     // impls for snap and reset?
-//     // fn client(&self) -> DevRpcMiddleware;
-//     fn snap(&self) -> u64 { 17 }
-//     fn reset(&self, id: u64) {}
-// }
-
-// #[derive(Debug, Clone)]
-// pub struct S1;
-// impl StateFrom<NullS> for S1 { fn new(s: NullS) -> Self { S1 } }
-
-// // macro generated:
-// impl DevClient for S1 {}
-// #[distributed_slice]
-// pub static FNS_ON_S1: [fn(S1)] = [..];
-// #[distributed_slice]
-// pub static STATES_FROM_S1: [fn(S1)] = [..];
+// pub static STATES_FROM_BASE_STATE: [StateMove<&'static BaseState>] = [..];
 // #[distributed_slice(STATES_FROM_NULL_STATE)]
-// static _S01: fn(NullS) = run_s1;
-// fn run_s1(b: NullS) { run_state(b, &STATES_FROM_S1, &FNS_ON_S1) }
+// static __SN1: StateMove<&NullState> = |s| Box::pin(move_state::<NullState, BaseState>(&s));
 
-// #[derive(Debug, Clone)]
-// pub struct S2;
-// impl StateFrom<S1> for S2 { fn new(s: S1) -> Self { S2 } }
 
-// impl DevClient for S2 {}
-// #[distributed_slice]
-// pub static FNS_ON_S2: [fn(S2)] = [..];
-// #[distributed_slice]
-// pub static STATES_FROM_S2: [fn(S2)] = [..];
-// #[distributed_slice(STATES_FROM_S1)]
-// static _S11: fn(S1) = run_s2;
-// fn run_s2(b: S1) { run_state(b, &STATES_FROM_S2, &FNS_ON_S2) }
 
-// #[distributed_slice(FNS_ON_S1)]
-// static _T11: fn(S1) = act_on_s1a;
-// pub fn act_on_s1a(_: S1) { println!("act_on_s1a"); }
-// #[distributed_slice(FNS_ON_S1)]
-// static _T12: fn(S1) = act_on_s1b;
-// pub fn act_on_s1b(_: S1) { println!("act_on_s1b"); }
-// #[distributed_slice(FNS_ON_S2)]
-// static _T21: fn(S2) = act_on_s2a;
-// pub fn act_on_s2a(_: S2) { println!("act_on_s2a"); }
-// #[distributed_slice(FNS_ON_S2)]
-// static _T22: fn(S2) = act_on_s2b;
-// pub fn act_on_s2b(_: S2) { println!("act_on_s2b"); }
 
-// fn run_state<B, S>(base: B, sub_states: &[fn(S)], tests: &[fn(S)])
+
+    // async fn run<'s, S: Send + Sync>(&'s mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()> {
+    //     self.run_children(state, children).await?;
+    //     self.run_tests(state, tests).await?;
+    //     self.hooks.after().await
+    // }
+// pub async fn move_state<'a, P, S>(prev_state: &P) -> Result<S>
 // where
-//     S: StateFrom<B> + DevClient + Clone
+//     S: 'a + State<Prev=P> + TestSet<State=S>,
 // {
-//     let state: S = S::new(base);
-//     let mut snap_id = state.snap();
-//     for runner in sub_states {
-//         runner(state.clone());
-//         state.reset(snap_id);
-//         snap_id = state.snap();
-//     }
-//     for t in tests {
-//         t(state.clone());
-//         state.reset(snap_id);
-//         snap_id = state.snap();
-//     }
+//     S::new(prev_state).await
 // }
-// would need to take the array of child states and
-// fn run_<S: From<B>, B>(base: B) {
-//     let state: S = S::from(base);
-//     for run_sub_state in STATES_FROM_NULL {
-//         run_sub_state(state.clone())
-//         state.reset();
-//     }
-//     for f in FNS_ON_NULL_STATE
+// pub async fn dispatch<'a, R, P, S>(runner: &mut R, prev_state: &P) -> Result<()>
+// where
+//     R: Runner,
+//     S: 'a + State<Prev=P> + TestSet<State=S>,
+// {
+//     let state = S::new(prev_state).await?;
+//     let tests = S::tests();
+//     let children = S::children();
+//     runner.run(&state, &tests, &children).await?;
+//     Ok(())
 // }
-// fn run_null(base: NullS) {
-//     let state: NullS = NullS::state_from(base); // must store snap_id
-//     let mut snap_id = state.snap();
-//     for run_sub_state in STATES_FROM_NULL_STATE {
-//         run_sub_state(state.clone());
-//         state.reset(snap_id);
-//         snap_id = state.snap();
-//     }
-//     for f in FNS_ON_NULL_STATE {
-//         f(state.clone());
-//         state.reset(snap_id);
-//         snap_id = state.snap();
-//     }
+// pub async fn start_runner<'a, R, P, S>(runner: &mut R, prev_state: &P) -> Result<()>
+// where
+//     R: Runner,
+//     S: 'a + State<Prev=P> + TestSet<State=S>,
+// {
+//     let state = S::new(prev_state).await?;
+//     let tests = S::tests();
+//     let children = S::children();
+//     runner.run(&state, &tests, &children).await?;
+//     // runner.start(&state, &tests, &children).await?;
+//     Ok(())
 // }
-// fn run_s1(base: NullS) {
-//     let state: S1 = S1::state_from(base); // must store snap_id
-//     let mut snap_id = state.snap();
-//     for run_sub_state in STATES_FROM_S1 {
-//         run_sub_state(state.clone());
-//         state.reset(snap_id);
-//         snap_id = state.snap();
-//     }
-//     for f in FNS_ON_S1 {
-//         f(state.clone());
-//         state.reset(snap_id);
-//         snap_id = state.snap();
-//     }
-// }
-
