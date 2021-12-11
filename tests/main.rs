@@ -2,7 +2,7 @@
 // #![feature(arbitrary_self_types)]
 #![feature(generic_associated_types)]
 
-use anyhow::{Result};
+use anyhow::Result;
 // use ethers::utils::{Ganache, GanacheInstance};
 // use futures::{self, FutureExt};
 // use std::panic::AssertUnwindSafe;
@@ -14,7 +14,7 @@ mod fns_only;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    fns_only::gmain();
+    fns_only::gmain().await?;
     // let z = _TLC.get(0);
     // for tset in TSETS {
     //     println!("\nSet");

@@ -2,18 +2,13 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
-use std::{convert::TryFrom, time::Duration, sync::Arc};
 use anyhow::{anyhow, Result};
-use futures::future::Future;
 use async_trait::async_trait;
+use ethers::{core::k256::ecdsa::SigningKey, prelude::*, types::U256, utils::Ganache};
+use futures::future::Future;
 use linkme::{distributed_slice, DistributedSlice};
 use once_cell::sync::Lazy;
-use ethers::{
-    core::k256::ecdsa::SigningKey,
-    types::U256,
-    utils::Ganache,
-    prelude::*,
-};
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 // Just put the runner in a dang lazy and get on with it
 // - turns out to be more complicated than I thought, requires major changes to Runner/Hooks
@@ -40,7 +35,9 @@ pub struct NullState;
 #[async_trait]
 impl State for NullState {
     type Prev = NullState;
-    async fn new(_prev: &Self::Prev) -> Result<Self> { Ok(NullState) }
+    async fn new(_prev: &Self::Prev) -> Result<Self> {
+        Ok(NullState)
+    }
 }
 pub struct Test<S> {
     pub name: &'static str,
@@ -49,23 +46,34 @@ pub struct Test<S> {
 
 #[async_trait]
 pub trait Hooks: Send + Sync {
-    async fn before_each(&mut self) -> Result<()> { Ok(()) }
-    async fn after_each(&mut self) -> Result<()> { Ok(()) }
-    async fn after(&mut self) -> Result<()> { Ok(()) }
+    async fn before_each(&mut self) -> Result<()> {
+        Ok(())
+    }
+    async fn after_each(&mut self) -> Result<()> {
+        Ok(())
+    }
+    async fn after(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 #[async_trait]
 pub trait Runner {
     async fn start<'s, P, S>(&'s mut self, prev_state: &'s P) -> Result<()>
     where
         P: Sync,
-        S: State<Prev=P> + TestSet<State=S>;
+        S: State<Prev = P> + TestSet<State = S>;
 }
 pub struct DevRpcHooks<M: Middleware> {
     snap_id: U256,
     client: DevRpcMiddleware<M>,
 }
 impl<M: Middleware> DevRpcHooks<M> {
-    fn new(client: DevRpcMiddleware<M>) -> Self { Self { snap_id: U256::from(0), client }}
+    fn new(client: DevRpcMiddleware<M>) -> Self {
+        Self {
+            snap_id: U256::from(0),
+            client,
+        }
+    }
 }
 #[async_trait]
 impl<M: 'static + Middleware> Hooks for DevRpcHooks<M> {
@@ -87,7 +95,7 @@ impl<H: Hooks> Runner for HookRunner<'_, H> {
     async fn start<'s, P, S>(&'s mut self, prev_state: &'s P) -> Result<()>
     where
         P: Sync,
-        S: State<Prev=P> + TestSet<State=S>,
+        S: State<Prev = P> + TestSet<State = S>,
     {
         let state = S::new(prev_state).await?;
         let tests = S::tests();
@@ -99,8 +107,14 @@ impl<H: Hooks> Runner for HookRunner<'_, H> {
     }
 }
 impl<'h, H: Hooks> HookRunner<'h, H> {
-    pub fn new(hooks: &'h mut H) -> Self { Self { hooks } }
-    async fn run_children<'s, S: Send + Sync, N>(&mut self, state: &'s S, children: &[StateMove<&'s S, N>]) -> Result<()> {
+    pub fn new(hooks: &'h mut H) -> Self {
+        Self { hooks }
+    }
+    async fn run_children<'s, S: Send + Sync, N>(
+        &mut self,
+        state: &'s S,
+        children: &[StateMove<&'s S, N>],
+    ) -> Result<()> {
         for child in children {
             self.hooks.before_each().await?;
 
@@ -113,10 +127,18 @@ impl<'h, H: Hooks> HookRunner<'h, H> {
         }
         Ok(())
     }
-    async fn run_child<'s, S: Send + Sync, N>(&self, state: &'s S, child: &StateMove<&'s S, N>) -> Result<()> {
+    async fn run_child<'s, S: Send + Sync, N>(
+        &self,
+        state: &'s S,
+        child: &StateMove<&'s S, N>,
+    ) -> Result<()> {
         Ok(())
     }
-    async fn run_tests<'s, S: Send + Sync>(&mut self, state: &'s S, tests: &[Test<&'s S>]) -> Result<()> {
+    async fn run_tests<'s, S: Send + Sync>(
+        &mut self,
+        state: &'s S,
+        tests: &[Test<&'s S>],
+    ) -> Result<()> {
         for t in tests {
             println!("{}", t.name);
             self.hooks.before_each().await?;
@@ -135,10 +157,18 @@ pub trait State: Clone + Send + Sync {
 
 pub trait TestSet {
     type State: State;
-    fn tests<'a>() -> &'a [Test<&'a Self::State>] { &[] }
-    fn children<'a>() -> &'a [Action<&'a Self::State>] { &[] }
-    fn tests_<'a>(&'a self) -> &'a [Test<&'a Self::State>] { &[] }
-    fn children_<'a>(&'a self) -> &'a [Action<&'a Self::State>] { &[] }
+    fn tests<'a>() -> &'a [Test<&'a Self::State>] {
+        &[]
+    }
+    fn children<'a>() -> &'a [Action<&'a Self::State>] {
+        &[]
+    }
+    fn tests_<'a>(&'a self) -> &'a [Test<&'a Self::State>] {
+        &[]
+    }
+    fn children_<'a>(&'a self) -> &'a [Action<&'a Self::State>] {
+        &[]
+    }
 }
 
 // --- User defined
@@ -154,11 +184,9 @@ impl State for BaseState {
     async fn new(prev: &Self::Prev) -> Result<Self> {
         println!("Building BaseState");
         let node = Ganache::new().spawn();
-        let provider = Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
-        let accts: Vec<LocalWallet> = node.keys()[..5]
-            .iter()
-            .map(|x| x.clone().into())
-            .collect();
+        let provider =
+            Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
+        let accts: Vec<LocalWallet> = node.keys()[..5].iter().map(|x| x.clone().into()).collect();
         let client = Arc::new(DevRpcMiddleware::new(SignerMiddleware::new(
             provider,
             accts[0].clone(),
@@ -172,13 +200,17 @@ impl State for BaseState {
     }
 }
 
-impl TestSet for NullState { type State = NullState; }
-impl TestSet for BaseState { type State = BaseState; }
+impl TestSet for NullState {
+    type State = NullState;
+}
+impl TestSet for BaseState {
+    type State = BaseState;
+}
 
 pub async fn dispatch<P, S, R>(prev_state: &P, runner: &mut R) -> Result<()>
 where
     P: Sync,
-    S: State<Prev=P> + TestSet<State=S>,
+    S: State<Prev = P> + TestSet<State = S>,
     R: Runner,
 {
     runner.start::<P, S>(prev_state).await
@@ -188,7 +220,8 @@ type RunnerType = HookRunner<'static, DevRpcHooks<Provider<Http>>>;
 #[distributed_slice]
 pub static STATES_FROM_NULL_STATE: [StateMove<&'static NullState, RunnerType>] = [..];
 #[distributed_slice(STATES_FROM_NULL_STATE)]
-pub static __SN1: StateMove<&'static NullState, RunnerType> = |s, r| Box::pin(dispatch::<NullState, BaseState, RunnerType>(s, r));
+pub static __SN1: StateMove<&'static NullState, RunnerType> =
+    |s, r| Box::pin(dispatch::<NullState, BaseState, RunnerType>(s, r));
 
 // pub static FOO: [StatesFromNull; 0] = [|s| B::new(s)];
 // #[distributed_slice]
@@ -202,14 +235,11 @@ pub static __SN1: StateMove<&'static NullState, RunnerType> = |s, r| Box::pin(di
 // #[distributed_slice(STATES_FROM_NULL_STATE)]
 // static __SN1: StateMove<&NullState> = |s| Box::pin(move_state::<NullState, BaseState>(&s));
 
-
-
-
-    // async fn run<'s, S: Send + Sync>(&'s mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()> {
-    //     self.run_children(state, children).await?;
-    //     self.run_tests(state, tests).await?;
-    //     self.hooks.after().await
-    // }
+// async fn run<'s, S: Send + Sync>(&'s mut self, state: &'s S, tests: &[Test<&'s S>], children: &[Action<&'s S>]) -> Result<()> {
+//     self.run_children(state, children).await?;
+//     self.run_tests(state, tests).await?;
+//     self.hooks.after().await
+// }
 // pub async fn move_state<'a, P, S>(prev_state: &P) -> Result<S>
 // where
 //     S: 'a + State<Prev=P> + TestSet<State=S>,
