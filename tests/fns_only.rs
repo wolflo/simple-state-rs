@@ -21,20 +21,29 @@ pub type StateMove<S, R> = fn(S, R) -> AsyncResult<Result<()>>;
 pub async fn gmain() -> Result<()> {
     let node = Ganache::new().spawn();
     let provider = Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
-    let client = DevRpcMiddleware::new(provider);
+    let accts: Vec<LocalWallet> = node.keys()[..5].iter().map(|x| x.clone().into()).collect();
+    let client = Arc::new(DevRpcMiddleware::new(SignerMiddleware::new(
+        provider,
+        accts[0].clone(),
+    )));
+
     let mut hooks = DevRpcHooks::new(&client);
     let runner = HookRunner::new(&mut hooks);
-    runner.start::<NullState, NullState>(&NullState).await?;
+    let state = DevRpcInit { client: &client, accts: &accts };
+    runner.start::<DevRpcInit, DevRpcInit>(&state).await?;
     Ok(())
 }
 
 #[derive(Debug, Clone)]
-pub struct NullState;
+pub struct DevRpcInit<'a> {
+    pub client: &'a Arc<Client>,
+    pub accts: &'a Vec<LocalWallet>,
+}
 #[async_trait]
-impl State for NullState {
-    type Prev = NullState;
-    async fn new(_prev: &Self::Prev) -> Result<Self> {
-        Ok(NullState)
+impl<'a> State for DevRpcInit<'a> {
+    type Prev = DevRpcInit<'a>;
+    async fn new(prev: &Self::Prev) -> Result<Self> {
+        Ok(prev.clone())
     }
 }
 pub struct Test<S> {
@@ -120,6 +129,7 @@ impl<'h, H: Hooks> HookRunner<'h, H> {
         state: &'s S,
         children: &[StateMove<&'s S, Self>],
     ) -> Result<()> {
+        println!("running {} children.", children.len());
         for dispatch in children {
             let mut hooks = self.hooks.clone();
             hooks.before_each().await?;
@@ -168,45 +178,34 @@ pub trait TestSet {
     fn tests_<'a>(&'a self) -> &'a [Test<&'a Self::State>] {
         &[]
     }
-    fn children_<'a, R: Runner>(&'a self) -> &'a [StateMove<&'a Self::State, R>] {
-        &[]
-    }
+    // fn children_(&self) -> &'static [StateMove<&'static Self::State, RunnerType>] {
+    //     &[]
+    // }
 }
 
 // --- User defined
 #[derive(Debug, Clone)]
-pub struct BaseState {
-    pub snap_id: Option<U256>,
-    pub client: Arc<Client>,
-    pub accts: Vec<LocalWallet>,
+pub struct BaseState<'a> {
+    pub client: &'a Arc<Client>,
+    pub accts: &'a Vec<LocalWallet>,
 }
 #[async_trait]
-impl State for BaseState {
-    type Prev = NullState;
+impl<'a> State for BaseState<'a> {
+    type Prev = DevRpcInit<'a>;
     async fn new(prev: &Self::Prev) -> Result<Self> {
         println!("Building BaseState");
-        let node = Ganache::new().spawn();
-        let provider =
-            Provider::<Http>::try_from(node.endpoint())?.interval(Duration::from_millis(1));
-        let accts: Vec<LocalWallet> = node.keys()[..5].iter().map(|x| x.clone().into()).collect();
-        let client = Arc::new(DevRpcMiddleware::new(SignerMiddleware::new(
-            provider,
-            accts[0].clone(),
-        )));
-        let snap_id = None;
-        Ok(Self {
-            snap_id,
-            client,
-            accts,
-        })
+        Ok(Self { client: prev.client, accts: prev.accts })
     }
 }
 
-impl TestSet for NullState {
-    type State = NullState;
+impl<'a> TestSet for DevRpcInit<'a> {
+    type State = DevRpcInit<'a>;
+    // fn children_(&self) -> &'static [StateMove<&'static Self::State, RunnerType>] {
+    //     &STATES_FROM_INIT_STATE
+    // }
 }
-impl TestSet for BaseState {
-    type State = BaseState;
+impl<'a> TestSet for BaseState<'a> {
+    type State = BaseState<'a>;
 }
 
 pub async fn dispatch<P, S, R>(prev_state: &P, runner: R) -> Result<()>
@@ -220,10 +219,10 @@ where
 
 type RunnerType = HookRunner<'static, DevRpcHooks<'static, Provider<Http>>>;
 #[distributed_slice]
-pub static STATES_FROM_NULL_STATE: [StateMove<&'static NullState, RunnerType>] = [..];
-#[distributed_slice(STATES_FROM_NULL_STATE)]
-pub static __SN1: StateMove<&'static NullState, RunnerType> =
-    |s, r| Box::pin(dispatch::<NullState, BaseState, RunnerType>(s, r));
+pub static STATES_FROM_INIT_STATE: [StateMove<&'static DevRpcInit<'static>, RunnerType>] = [..];
+#[distributed_slice(STATES_FROM_INIT_STATE)]
+pub static __SN1: StateMove<&'static DevRpcInit<'static>, RunnerType> =
+    |s, r| Box::pin(dispatch::<DevRpcInit<'static>, BaseState, RunnerType>(s, r));
 
 // pub static FOO: [StatesFromNull; 0] = [|s| B::new(s)];
 // #[distributed_slice]
