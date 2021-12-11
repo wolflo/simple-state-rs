@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use futures::future::Future;
 use async_trait::async_trait;
 use linkme::{distributed_slice, DistributedSlice};
+use once_cell::sync::Lazy;
 use ethers::{
     core::k256::ecdsa::SigningKey,
     types::U256,
@@ -14,10 +15,15 @@ use ethers::{
     prelude::*,
 };
 
+// Just put the runner in a dang lazy and get on with it
+// - turns out to be more complicated than I thought, requires major changes to Runner/Hooks
+// Can we use a generic fn (i.e. a function that allows us to hide the type signature from
+// rust) to construct the type we want (rather than to construct a value of the type we pass)?
+
 pub type Client = DevRpcMiddleware<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>;
 pub type AsyncResult<R> = std::pin::Pin<Box<dyn Future<Output = R> + Send>>;
 pub type Action<T> = fn(T) -> AsyncResult<Result<()>>;
-pub type StateMove<P, S> = fn(P) -> AsyncResult<S>;
+pub type StateMove<S, R> = fn(S, &'static mut R) -> AsyncResult<Result<()>>;
 
 pub async fn gmain() -> Result<()> {
     let node = Ganache::new().spawn();
@@ -26,7 +32,6 @@ pub async fn gmain() -> Result<()> {
     let mut hooks = DevRpcHooks::new(client);
     let mut runner = HookRunner::new(&mut hooks);
     runner.start::<NullState, NullState>(&NullState).await?;
-    // dispatch::<_, _, NullState>(&mut runner, &NullState).await.unwrap();
     Ok(())
 }
 
@@ -87,9 +92,10 @@ impl<H: Hooks> Runner for HookRunner<'_, H> {
         let state = S::new(prev_state).await?;
         let tests = S::tests();
         let children = S::children();
-        self.run_children(&state, children).await?;
-        self.run_tests(&state, tests).await?;
-        self.hooks.after().await
+        // self.run_children(&state, children).await?;
+        // self.run_tests(&state, tests).await?;
+        // self.hooks.after().await
+        Ok(())
     }
 }
 impl<'h, H: Hooks> HookRunner<'h, H> {
@@ -169,6 +175,21 @@ impl State for BaseState {
 impl TestSet for NullState { type State = NullState; }
 impl TestSet for BaseState { type State = BaseState; }
 
+pub async fn dispatch<P, S, R>(prev_state: &P, runner: &mut R) -> Result<()>
+where
+    P: Sync,
+    S: State<Prev=P> + TestSet<State=S>,
+    R: Runner,
+{
+    runner.start::<P, S>(prev_state).await
+}
+
+type RunnerType = HookRunner<'static, DevRpcHooks<Provider<Http>>>;
+#[distributed_slice]
+pub static STATES_FROM_NULL_STATE: [StateMove<&'static NullState, RunnerType>] = [..];
+#[distributed_slice(STATES_FROM_NULL_STATE)]
+pub static __SN1: StateMove<&'static NullState, RunnerType> = |s, r| Box::pin(dispatch::<NullState, BaseState, RunnerType>(s, r));
+
 // pub static FOO: [StatesFromNull; 0] = [|s| B::new(s)];
 // #[distributed_slice]
 // pub static STATES_FROM_NULL_STATE: [StateMove<&'static NullState>] = [..];
@@ -180,7 +201,6 @@ impl TestSet for BaseState { type State = BaseState; }
 // pub static STATES_FROM_BASE_STATE: [StateMove<&'static BaseState>] = [..];
 // #[distributed_slice(STATES_FROM_NULL_STATE)]
 // static __SN1: StateMove<&NullState> = |s| Box::pin(move_state::<NullState, BaseState>(&s));
-
 
 
 
