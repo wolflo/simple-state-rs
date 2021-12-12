@@ -3,11 +3,11 @@
 #![allow(unused_variables)]
 
 use anyhow::{anyhow, Result};
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use async_trait::async_trait;
 use ethers::{core::k256::ecdsa::SigningKey, prelude::*, types::U256, utils::Ganache};
 use futures::future::Future;
-use async_trait::async_trait;
 use linkme::{distributed_slice, DistributedSlice};
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use crate::RunnerType;
 
@@ -25,8 +25,8 @@ pub static TESTS_ON_INIT_STATE: [Test<DevRpcInitState>] = [..];
 // Defines the state passed into each test
 #[async_trait]
 pub trait State: Clone + Send + Sync {
-    type Prev: State;
-    async fn new(prev: Self::Prev) -> Result<Self>;
+    type Base: State;
+    async fn new(base: Self::Base) -> Result<Self>;
 }
 pub struct Test<S> {
     pub name: &'static str,
@@ -43,22 +43,21 @@ pub trait TestSet {
     }
 }
 
-pub async fn dispatch<P, S, R>(prev_state: P, runner: R) -> Result<()>
+pub async fn dispatch<B, S, R>(base_state: B, runner: R) -> Result<()>
 where
-    P: Send + Sync,
-    S: 'static + State<Prev = P> + TestSet<State = S, Runner = R>,
+    B: Send + Sync,
+    S: 'static + State<Base = B> + TestSet<State = S, Runner = R>,
     R: Runner,
 {
-    println!("dispatch");
-    runner.start::<P, S>(prev_state).await
+    runner.start::<B, S>(base_state).await
 }
 
 #[async_trait]
 pub trait Runner: Clone {
-    async fn start<'s, P, S>(&'s self, prev_state: P) -> Result<()>
+    async fn start<'s, B, S>(&'s self, base_state: B) -> Result<()>
     where
-        P: Send + Sync,
-        S: 'static + State<Prev = P> + TestSet<State = S, Runner = Self>;
+        B: Send + Sync,
+        S: 'static + State<Base = B> + TestSet<State = S, Runner = Self>;
 }
 
 #[async_trait]
@@ -83,17 +82,16 @@ pub struct HookRunner<H: Hooks> {
 }
 #[async_trait]
 impl<H: 'static + Hooks> Runner for HookRunner<H> {
-    async fn start<'s, P, S>(&'s self, prev_state: P) -> Result<()>
+    async fn start<'s, B, S>(&'s self, base_state: B) -> Result<()>
     where
-        P: Send + Sync,
-        S: 'static + State<Prev = P> + TestSet<State = S, Runner = Self>,
+        B: Send + Sync,
+        S: 'static + State<Base = B> + TestSet<State = S, Runner = Self>,
     {
         let mut hooks = self.hooks.clone();
         hooks.before().await?;
-        let state = S::new(prev_state).await?;
+        let state = S::new(base_state).await?;
         let tests = state.tests();
         let children = state.children();
-        println!("num children: {}", children.clone().len());
         self.clone().run_children(state.clone(), children).await?;
         self.run_tests(state, tests).await?;
         hooks.after().await?;
@@ -118,18 +116,10 @@ impl<H: Hooks> HookRunner<H> {
         }
         Ok(())
     }
-    async fn run_child<S: Send + Sync, N>(
-        &self,
-        state: S,
-        child: &StateMove<S, N>,
-    ) -> Result<()> {
+    async fn run_child<S: Send + Sync, N>(&self, state: S, child: &StateMove<S, N>) -> Result<()> {
         Ok(())
     }
-    async fn run_tests<S: Clone + Send + Sync>(
-        &self,
-        state: S,
-        tests: &[Test<S>],
-    ) -> Result<()> {
+    async fn run_tests<S: Clone + Send + Sync>(&self, state: S, tests: &[Test<S>]) -> Result<()> {
         for t in tests {
             println!("{}", t.name);
             let mut hooks = self.hooks.clone();
@@ -174,9 +164,9 @@ pub struct DevRpcInitState {
 }
 #[async_trait]
 impl State for DevRpcInitState {
-    type Prev = DevRpcInitState;
-    async fn new(prev: Self::Prev) -> Result<Self> {
-        Ok(prev.clone())
+    type Base = DevRpcInitState;
+    async fn new(base: Self::Base) -> Result<Self> {
+        Ok(base.clone())
     }
 }
 impl TestSet for DevRpcInitState {

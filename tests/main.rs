@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 mod harness;
-use crate::harness::types::{*, Client, Action};
+use crate::harness::types::{Action, Client, *};
 
 mod tests;
 use crate::tests::prestate::*;
@@ -30,7 +30,12 @@ async fn main() -> Result<()> {
 
     let hooks = DevRpcHooks::new(client.clone());
     let runner = HookRunner::new(hooks);
-    let state = DevRpcInitState { client: client, accts: accts };
-    runner.start::<DevRpcInitState, DevRpcInitState>(state).await?;
+    let state = DevRpcInitState {
+        client: client,
+        accts: accts,
+    };
+    runner
+        .start::<DevRpcInitState, DevRpcInitState>(state)
+        .await?;
     Ok(())
 }
