@@ -29,3 +29,6 @@ panic = "unwind"
 
 [profile.release]
 panic = "unwind"
+
+[patch."https://github.com/gakonst/ethers-rs"]
+ethers = { git = "https://github.com/wolflo/ethers-rs", branch = "dev-rpc" }
