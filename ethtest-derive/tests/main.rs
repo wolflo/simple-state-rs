@@ -2,12 +2,18 @@
 #![allow(unused_imports)]
 #![allow(unused_variables)]
 
-use ethtest::ethtest;
+use ethtest::{ethtest, ethinto};
 
+pub struct State0;
 pub struct State1;
+pub trait State { type Prev: State; }
+impl State for State0 { type Prev = State0; }
+
 
 #[test]
 pub fn tests() {
-    #[ethtest]
-    pub async fn foo(ctx: State1) {}
+    // #[ethtest]
+    // pub async fn foo(ctx: State1) {}
+    #[ethinto]
+    impl State for State1 { type Prev = State0; }
 }
