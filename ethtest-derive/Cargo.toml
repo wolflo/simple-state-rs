@@ -1,0 +1,21 @@
+[package]
+name = "ethtest"
+version = "0.0.0"
+edition = "2021"
+autotests = false
+publish = false
+
+[lib]
+proc-macro = true
+
+[[test]]
+name = "tests"
+path = "tests/main.rs"
+
+[dev-dependencies]
+trybuild = { version = "1.0.53", features = ["diff"] }
+
+[dependencies]
+syn = { version = "1.0.82", features = ["full"] }
+quote = "1.0.10"
+proc-macro2 = "1.0.33"
