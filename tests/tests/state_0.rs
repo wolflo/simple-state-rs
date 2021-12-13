@@ -27,8 +27,8 @@ impl State for State0 {
     }
 }
 
-pub async fn test_deploy(state: State0) -> Result<()> {
-    let initial_state = state.machine.state().call().await?;
+pub async fn test_deploy(ctx: State0) -> Result<()> {
+    let initial_state = ctx.machine.state().call().await?;
     assert_eq!(initial_state, 0.into());
     Ok(())
 }

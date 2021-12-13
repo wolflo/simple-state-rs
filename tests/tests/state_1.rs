@@ -28,15 +28,15 @@ impl State for State1 {
     }
 }
 
-pub async fn test_step_to_1(state: State1) -> Result<()> {
-    let machine_state = state.machine.state().call().await?;
+pub async fn test_step_to_1(ctx: State1) -> Result<()> {
+    let machine_state = ctx.machine.state().call().await?;
     assert_eq!(machine_state, 1.into());
     Ok(())
 }
 
-pub async fn test_step_to_3(state: State1) -> Result<()> {
-    state.machine.step(3.into()).send().await?;
-    let machine_state = state.machine.state().call().await?;
+pub async fn test_step_to_3(ctx: State1) -> Result<()> {
+    ctx.machine.step(3.into()).send().await?;
+    let machine_state = ctx.machine.state().call().await?;
     assert_eq!(machine_state, 3.into());
     Ok(())
 }

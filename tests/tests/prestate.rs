@@ -1,11 +1,11 @@
 use crate::harness::types::{DevRpcInitState, TESTS_ON_INIT_STATE};
 use crate::tests::utils::*;
 
-async fn test_initialization(state: DevRpcInitState) -> Result<()> {
-    let block_number = state.client.get_block_number().await?;
-    let balance = state
+async fn test_initialization(ctx: DevRpcInitState) -> Result<()> {
+    let block_number = ctx.client.get_block_number().await?;
+    let balance = ctx
         .client
-        .get_balance(state.accts[0].address(), None)
+        .get_balance(ctx.accts[0].address(), None)
         .await?;
     assert_eq!(block_number, 0usize.into());
     assert!(balance > 0usize.into());
