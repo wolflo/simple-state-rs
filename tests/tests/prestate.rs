@@ -9,9 +9,3 @@ async fn test_initialization(ctx: DevRpcInitState) -> Result<()> {
     assert!(balance > 0usize.into());
     Ok(())
 }
-
-// #[distributed_slice(TESTS_ON_INIT_STATE)]
-// pub static __ST1: Test<DevRpcInitState> = Test {
-//     name: "test_initialization",
-//     run: |s| Box::pin(test_initialization(s)),
-// };

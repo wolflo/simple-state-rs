@@ -44,7 +44,6 @@ pub async fn test_step_to_3(ctx: State1) -> Result<()> {
 }
 
 // --- macro generated ---
-
 // impl TestSet for State1 {
 //     type State = State1;
 //     type Runner = RunnerType;
