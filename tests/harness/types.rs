@@ -10,17 +10,13 @@ use linkme::{distributed_slice, DistributedSlice};
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use crate::RunnerType;
+use ethtest::ethstate;
 
 pub type Client = DevRpcMiddleware<SignerMiddleware<Provider<Http>, Wallet<SigningKey>>>;
 pub type AsyncResult<R> = std::pin::Pin<Box<dyn Future<Output = R> + Send>>;
 pub type Action<T> = fn(T) -> AsyncResult<Result<()>>;
 pub type StateMove<S, R> = fn(S, R) -> AsyncResult<Result<()>>;
 
-#[distributed_slice]
-pub static STATES_FROM_INIT_STATE: [StateMove<DevRpcInitState, RunnerType>] = [..];
-
-#[distributed_slice]
-pub static TESTS_ON_INIT_STATE: [Test<DevRpcInitState>] = [..];
 
 // Defines the state passed into each test
 #[async_trait]
@@ -162,6 +158,7 @@ pub struct DevRpcInitState {
     pub client: Arc<Client>,
     pub accts: Vec<LocalWallet>,
 }
+#[ethstate]
 #[async_trait]
 impl State for DevRpcInitState {
     type Base = DevRpcInitState;
@@ -169,13 +166,19 @@ impl State for DevRpcInitState {
         Ok(base.clone())
     }
 }
-impl TestSet for DevRpcInitState {
-    type State = DevRpcInitState;
-    type Runner = RunnerType;
-    fn tests(&self) -> &'static [Test<Self::State>] {
-        &TESTS_ON_INIT_STATE
-    }
-    fn children(&self) -> &'static [StateMove<Self::State, Self::Runner>] {
-        &STATES_FROM_INIT_STATE
-    }
-}
+
+// -- macro generated --
+// impl TestSet for DevRpcInitState {
+//     type State = DevRpcInitState;
+//     type Runner = RunnerType;
+//     fn tests(&self) -> &'static [Test<Self::State>] {
+//         &TESTS_ON_INIT_STATE
+//     }
+//     fn children(&self) -> &'static [StateMove<Self::State, Self::Runner>] {
+//         &STATES_FROM_INIT_STATE
+//     }
+// }
+// #[distributed_slice]
+// pub static STATES_FROM_INIT_STATE: [StateMove<DevRpcInitState, RunnerType>] = [..];
+// #[distributed_slice]
+// pub static TESTS_ON_INIT_STATE: [Test<DevRpcInitState>] = [..];

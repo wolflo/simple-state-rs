@@ -10,6 +10,7 @@ pub struct State1 {
     pub machine: SimpleState<Client>, // deployed SimpleState contract
 }
 
+#[ethstate]
 #[async_trait]
 impl State for State1 {
     type Base = State0;
@@ -45,21 +46,25 @@ pub async fn test_step_to_3(ctx: State1) -> Result<()> {
 
 // --- macro generated ---
 
-impl TestSet for State1 {
-    type State = State1;
-    type Runner = RunnerType;
-    fn tests(&self) -> &'static [Test<Self::State>] {
-        &TESTS_ON_STATE1
-    }
-    fn children(&self) -> &'static [StateMove<Self::State, Self::Runner>] {
-        &STATES_FROM_STATE1
-    }
-}
+// impl TestSet for State1 {
+//     type State = State1;
+//     type Runner = RunnerType;
+//     fn tests(&self) -> &'static [Test<Self::State>] {
+//         &TESTS_ON_STATE1
+//     }
+//     fn children(&self) -> &'static [StateMove<Self::State, Self::Runner>] {
+//         &STATES_FROM_STATE1
+//     }
+// }
 
-#[distributed_slice]
-pub static STATES_FROM_STATE1: [StateMove<State1, RunnerType>] = [..];
-#[distributed_slice]
-pub static TESTS_ON_STATE1: [Test<State1>] = [..];
+// #[distributed_slice(STATES_FROM_STATE0)]
+// pub static __SN1: StateMove<State0, RunnerType> =
+//     |s, r| Box::pin(dispatch::<State0, State1, RunnerType>(s, r));
+// #[distributed_slice]
+// pub static STATES_FROM_STATE1: [StateMove<State1, RunnerType>] = [..];
+// #[distributed_slice]
+// pub static TESTS_ON_STATE1: [Test<State1>] = [..];
+
 // #[distributed_slice(TESTS_ON_STATE1)]
 // pub static __TS11: Test<State1> = Test {
 //     name: "test_step_to_1",
@@ -71,6 +76,3 @@ pub static TESTS_ON_STATE1: [Test<State1>] = [..];
 //     run: |s| Box::pin(test_step_to_3(s)),
 // };
 
-#[distributed_slice(STATES_FROM_STATE0)]
-pub static __SN1: StateMove<State0, RunnerType> =
-    |s, r| Box::pin(dispatch::<State0, State1, RunnerType>(s, r));

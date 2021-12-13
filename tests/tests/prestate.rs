@@ -1,6 +1,7 @@
-use crate::harness::types::{DevRpcInitState, TESTS_ON_INIT_STATE};
+use crate::harness::types::{DevRpcInitState};
 use crate::tests::utils::*;
 
+#[ethtest]
 async fn test_initialization(ctx: DevRpcInitState) -> Result<()> {
     let block_number = ctx.client.get_block_number().await?;
     let balance = ctx
@@ -12,8 +13,8 @@ async fn test_initialization(ctx: DevRpcInitState) -> Result<()> {
     Ok(())
 }
 
-#[distributed_slice(TESTS_ON_INIT_STATE)]
-pub static __ST1: Test<DevRpcInitState> = Test {
-    name: "test_initialization",
-    run: |s| Box::pin(test_initialization(s)),
-};
+// #[distributed_slice(TESTS_ON_INIT_STATE)]
+// pub static __ST1: Test<DevRpcInitState> = Test {
+//     name: "test_initialization",
+//     run: |s| Box::pin(test_initialization(s)),
+// };
