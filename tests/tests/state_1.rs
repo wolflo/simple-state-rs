@@ -28,12 +28,14 @@ impl State for State1 {
     }
 }
 
+#[ethtest]
 pub async fn test_step_to_1(ctx: State1) -> Result<()> {
     let machine_state = ctx.machine.state().call().await?;
     assert_eq!(machine_state, 1.into());
     Ok(())
 }
 
+#[ethtest]
 pub async fn test_step_to_3(ctx: State1) -> Result<()> {
     ctx.machine.step(3.into()).send().await?;
     let machine_state = ctx.machine.state().call().await?;
@@ -58,16 +60,16 @@ impl TestSet for State1 {
 pub static STATES_FROM_STATE1: [StateMove<State1, RunnerType>] = [..];
 #[distributed_slice]
 pub static TESTS_ON_STATE1: [Test<State1>] = [..];
-#[distributed_slice(TESTS_ON_STATE1)]
-pub static __TS11: Test<State1> = Test {
-    name: "test_step_to_1",
-    run: |s| Box::pin(test_step_to_1(s)),
-};
-#[distributed_slice(TESTS_ON_STATE1)]
-pub static __TS12: Test<State1> = Test {
-    name: "test_step_to_1",
-    run: |s| Box::pin(test_step_to_3(s)),
-};
+// #[distributed_slice(TESTS_ON_STATE1)]
+// pub static __TS11: Test<State1> = Test {
+//     name: "test_step_to_1",
+//     run: |s| Box::pin(test_step_to_1(s)),
+// };
+// #[distributed_slice(TESTS_ON_STATE1)]
+// pub static __TS12: Test<State1> = Test {
+//     name: "test_step_to_1",
+//     run: |s| Box::pin(test_step_to_3(s)),
+// };
 
 #[distributed_slice(STATES_FROM_STATE0)]
 pub static __SN1: StateMove<State0, RunnerType> =

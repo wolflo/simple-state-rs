@@ -22,6 +22,7 @@ futures-executor = "0.3.18"
 async-trait = "0.1.51"
 array_map = "0.3.4"
 downcast-rs = "1.2.0"
+ethtest = { path = "./ethtest-derive" }
 
 [build-dependencies]
 serde = { version = "1.0.124", features = ["derive"] }
