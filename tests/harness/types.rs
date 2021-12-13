@@ -17,7 +17,6 @@ pub type AsyncResult<R> = std::pin::Pin<Box<dyn Future<Output = R> + Send>>;
 pub type Action<T> = fn(T) -> AsyncResult<Result<()>>;
 pub type StateMove<S, R> = fn(S, R) -> AsyncResult<Result<()>>;
 
-
 // Defines the state passed into each test
 #[async_trait]
 pub trait State: Clone + Send + Sync {
@@ -158,7 +157,7 @@ pub struct DevRpcInitState {
     pub client: Arc<Client>,
     pub accts: Vec<LocalWallet>,
 }
-#[ethstate]
+#[ethstate(init)]
 #[async_trait]
 impl State for DevRpcInitState {
     type Base = DevRpcInitState;

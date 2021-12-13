@@ -3,8 +3,8 @@ pub use crate::harness::types::*;
 pub use crate::RunnerType;
 pub use anyhow::{anyhow, Result};
 pub use async_trait::async_trait;
+pub use ethtest::{ethstate, ethtest};
 pub use linkme::{distributed_slice, DistributedSlice};
-pub use ethtest::{ethtest, ethstate};
 
 pub use ethers::{prelude::LocalWallet, providers::Middleware, signers::Signer};
 use ethers::{

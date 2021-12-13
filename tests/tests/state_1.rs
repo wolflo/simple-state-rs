@@ -1,6 +1,6 @@
 use crate::tests::state_0::{State0, STATES_FROM_STATE0};
 use crate::tests::utils::*;
-use ethers::{prelude::LocalWallet};
+use ethers::prelude::LocalWallet;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -17,7 +17,6 @@ impl State for State1 {
 
     // deploy the SimpleState contract
     async fn new(base: Self::Base) -> Result<Self> {
-
         // step contract to state 1
         base.machine.step(1.into()).send().await?;
 
@@ -75,4 +74,3 @@ pub async fn test_step_to_3(ctx: State1) -> Result<()> {
 //     name: "test_step_to_1",
 //     run: |s| Box::pin(test_step_to_3(s)),
 // };
-

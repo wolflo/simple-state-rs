@@ -39,7 +39,7 @@ pub fn ethtest(_attr: TokenStream, item: TokenStream) -> TokenStream {
 // - handle Runner/State assoc types out of order
 // - generate impl TestSet
 #[proc_macro_attribute]
-pub fn ethstate(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn ethstate(attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as syn::ItemImpl);
 
     let state_on = match &*input.self_ty {
@@ -62,12 +62,21 @@ pub fn ethstate(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let tests_id = format_ident!("TESTS_ON_{}", state_big);
     let next_states_id = format_ident!("STATES_FROM_{}", state_big);
 
-    // TODO FROM_PREV_STATE
+    // If ethtest(init), don't add current state to previous state
+    // Could also check if type of current == prev
+    let add_state = if attr.is_empty() {
+        quote!{
+            const _: () = {
+                #[distributed_slice(#prev_state_id)]
+                static __: StateMove<#prev_state, RunnerType> = |s, r| Box::pin(dispatch::<#prev_state, #state_on, RunnerType>(s, r));
+            };
+        }
+    } else {
+        quote!{}
+    };
+
     let res = quote! {
-        const _: () = {
-            #[distributed_slice(#prev_state_id)]
-            static __: StateMove<#prev_state, RunnerType> = |s, r| Box::pin(dispatch::<#prev_state, #state_on, RunnerType>(s, r));
-        };
+        #add_state
 
         #[distributed_slice]
         pub static #next_states_id: [StateMove<#state_on, RunnerType>] = [..];

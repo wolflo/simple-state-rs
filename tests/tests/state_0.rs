@@ -1,6 +1,6 @@
-use crate::harness::types::{DevRpcInitState};
+use crate::harness::types::DevRpcInitState;
 use crate::tests::utils::*;
-use ethers::{prelude::LocalWallet};
+use ethers::prelude::LocalWallet;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
