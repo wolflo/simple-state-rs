@@ -1,6 +1,6 @@
 use crate::harness::types::{DevRpcInitState, STATES_FROM_INIT_STATE};
 use crate::tests::utils::*;
-use ethers::{prelude::LocalWallet, types::Bytes};
+use ethers::{prelude::LocalWallet};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -9,9 +9,12 @@ pub struct State0 {
     pub accts: Vec<LocalWallet>,
     pub machine: SimpleState<Client>, // deployed SimpleState contract
 }
+
 #[async_trait]
 impl State for State0 {
     type Base = DevRpcInitState;
+
+    // deploy the SimpleState contract
     async fn new(base: Self::Base) -> Result<Self> {
         let factory = make_factory("SimpleState", &base.client)?;
         let deployed = factory.deploy(())?.send().await?;
@@ -19,7 +22,7 @@ impl State for State0 {
         Ok(Self {
             client: base.client,
             accts: base.accts,
-            machine: machine,
+            machine,
         })
     }
 }
@@ -29,6 +32,8 @@ pub async fn test_deploy(state: State0) -> Result<()> {
     assert_eq!(initial_state, 0.into());
     Ok(())
 }
+
+// --- macro generated ---
 
 impl TestSet for State0 {
     type State = State0;
